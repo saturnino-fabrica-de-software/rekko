@@ -69,7 +69,7 @@ func createMultipartRequest(externalID string, imageContent []byte, contentType 
 		_, _ = part.Write(imageContent)
 	}
 
-	writer.Close()
+	_ = writer.Close()
 	return body, writer.FormDataContentType(), nil
 }
 

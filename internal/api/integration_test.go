@@ -82,7 +82,7 @@ func TestMain(m *testing.M) {
 
 func TestIntegration_HealthEndpoint(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger)
+	router := NewRouter(logger, nil)
 	router.Setup()
 
 	req := httptest.NewRequest("GET", "/health", nil)
@@ -108,7 +108,7 @@ func TestIntegration_HealthEndpoint(t *testing.T) {
 
 func TestIntegration_ReadyEndpoint(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger)
+	router := NewRouter(logger, nil)
 	router.Setup()
 
 	req := httptest.NewRequest("GET", "/ready", nil)
@@ -124,7 +124,7 @@ func TestIntegration_ReadyEndpoint(t *testing.T) {
 
 func TestIntegration_NotFoundReturns404(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	router := NewRouter(logger)
+	router := NewRouter(logger, nil)
 	router.Setup()
 
 	req := httptest.NewRequest("GET", "/nonexistent", nil)

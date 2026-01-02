@@ -9,8 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/config"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/provider/mock"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
 )
 
 func main() {
@@ -36,12 +40,43 @@ func run() error {
 		slog.Int("port", cfg.Port),
 	)
 
-	// Setup router
-	router := api.NewRouter(logger)
+	// Connect to database
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+	defer pool.Close()
+
+	// Verify database connection
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("failed to ping database: %w", err)
+	}
+	logger.Info("connected to database")
+
+	// Create repositories
+	tenantRepo := repository.NewTenantRepository(pool)
+	faceRepo := repository.NewFaceRepository(pool)
+	verificationRepo := repository.NewVerificationRepository(pool)
+
+	// Create provider (mock for development)
+	faceProvider := mock.New()
+	logger.Info("using mock face provider")
+
+	// Setup dependencies
+	deps := &api.Dependencies{
+		TenantRepo:       tenantRepo,
+		FaceRepo:         faceRepo,
+		VerificationRepo: verificationRepo,
+		FaceProvider:     faceProvider,
+	}
+
+	// Setup router with dependencies
+	router := api.NewRouter(logger, deps)
 	router.Setup()
 
 	// Graceful shutdown
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// Start server in goroutine
@@ -56,14 +91,14 @@ func run() error {
 
 	// Wait for shutdown signal or error
 	select {
-	case <-ctx.Done():
+	case <-shutdownCtx.Done():
 		logger.Info("shutdown signal received")
 	case err := <-errChan:
 		return fmt.Errorf("server error: %w", err)
 	}
 
 	// Graceful shutdown with timeout
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	gracefulCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	logger.Info("shutting down server...")
@@ -71,7 +106,7 @@ func run() error {
 		logger.Error("shutdown error", slog.Any("error", err))
 	}
 
-	<-shutdownCtx.Done()
+	<-gracefulCtx.Done()
 	logger.Info("server stopped")
 
 	return nil

@@ -176,7 +176,9 @@ func extractAndValidateImage(c *fiber.Ctx) ([]byte, error) {
 	if err != nil {
 		return nil, domain.ErrInvalidImage.WithError(err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	imageBytes, err := io.ReadAll(f)
 	if err != nil {
