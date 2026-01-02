@@ -30,6 +30,9 @@ type ErrorResponse struct {
 	Message string `json:"message" example:"Request validation failed"`
 }
 
+// EmptyResponse represents no content response (204)
+type EmptyResponse struct{}
+
 // NewSwagger creates and configures the Swagger documentation
 func NewSwagger() *swagno.Swagger {
 	sw := swagno.New(swagno.Config{
@@ -107,7 +110,7 @@ func NewSwagger() *swagno.Swagger {
 				parameter.StrParam("external_id", parameter.Path, parameter.WithRequired(), parameter.WithDescription("Unique identifier of the user whose face should be deleted")),
 			),
 			endpoint.WithSuccessfulReturns([]response.Response{
-				response.New(nil, "204", "Face deleted successfully"),
+				response.New(EmptyResponse{}, "204", "Face deleted successfully"),
 			}),
 			endpoint.WithErrors([]response.Response{
 				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "external_id is required"}, "400", "Bad Request"),
