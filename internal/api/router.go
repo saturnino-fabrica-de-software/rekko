@@ -7,6 +7,8 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 
+	swagger "github.com/go-swagno/swagno-fiber/swagger"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/api/docs"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/handler"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
@@ -50,6 +52,10 @@ func (r *Router) Setup() {
 		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
 		AllowHeaders: "Origin,Content-Type,Accept,Authorization,X-Tenant-ID",
 	}))
+
+	// Swagger documentation (no auth required)
+	sw := docs.NewSwagger()
+	swagger.SwaggerHandler(r.app, sw.MustToJson())
 
 	// Health check endpoints (no auth required)
 	healthHandler := handler.NewHealthHandler()

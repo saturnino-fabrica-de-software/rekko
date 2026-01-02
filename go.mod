@@ -29,6 +29,9 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
+	github.com/go-swagno/swagno v1.2.5 // indirect
+	github.com/go-swagno/swagno-fiber v1.0.0 // indirect
+	github.com/go-swagno/swagno-files v0.1.3 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
