@@ -9,14 +9,25 @@ import (
 
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/handler"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/service"
 )
+
+type Dependencies struct {
+	TenantRepo       *repository.TenantRepository
+	FaceRepo         *repository.FaceRepository
+	VerificationRepo *repository.VerificationRepository
+	FaceProvider     provider.FaceProvider
+}
 
 type Router struct {
 	app    *fiber.App
 	logger *slog.Logger
+	deps   *Dependencies
 }
 
-func NewRouter(logger *slog.Logger) *Router {
+func NewRouter(logger *slog.Logger, deps *Dependencies) *Router {
 	app := fiber.New(fiber.Config{
 		ErrorHandler: middleware.ErrorHandler(logger),
 		AppName:      "Rekko API",
@@ -25,6 +36,7 @@ func NewRouter(logger *slog.Logger) *Router {
 	return &Router{
 		app:    app,
 		logger: logger,
+		deps:   deps,
 	}
 }
 
@@ -44,17 +56,29 @@ func (r *Router) Setup() {
 	r.app.Get("/health", healthHandler.Health)
 	r.app.Get("/ready", healthHandler.Ready)
 
-	// API v1 group
+	// API v1 group with authentication
 	v1 := r.app.Group("/v1")
 
-	// TODO: Add authenticated routes here
-	// v1.Use(middleware.Auth())
-	// v1.Post("/faces", faceHandler.Register)
-	// v1.Post("/faces/verify", faceHandler.Verify)
-	// v1.Delete("/faces/:external_id", faceHandler.Delete)
-	// v1.Get("/usage", usageHandler.Get)
+	// Only configure authenticated routes if dependencies were provided
+	if r.deps != nil {
+		// Auth middleware
+		v1.Use(middleware.Auth(r.deps.TenantRepo))
 
-	_ = v1 // Avoid unused variable warning
+		// Face service
+		faceService := service.NewFaceService(
+			r.deps.FaceRepo,
+			r.deps.VerificationRepo,
+			r.deps.FaceProvider,
+		)
+
+		// Face handler
+		faceHandler := handler.NewFaceHandler(faceService)
+
+		// Face routes
+		v1.Post("/faces", faceHandler.Register)
+		v1.Post("/faces/verify", faceHandler.Verify)
+		v1.Delete("/faces/:external_id", faceHandler.Delete)
+	}
 }
 
 func (r *Router) App() *fiber.App {
