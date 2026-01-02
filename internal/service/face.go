@@ -122,19 +122,21 @@ func (s *FaceService) Verify(ctx context.Context, tenantID uuid.UUID, externalID
 		LatencyMs:  latencyMs,
 	}
 
+	// Audit log - error is intentionally not returned
+	// The verification result was already determined successfully
+	// In production, this would be logged with proper observability
 	_ = s.verificationRepo.Create(ctx, verification)
 
 	return verification, nil
 }
 
 func (s *FaceService) Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error {
-	face, err := s.faceRepo.GetByExternalID(ctx, tenantID, externalID)
-	if err != nil {
+	// Verify face exists and belongs to tenant before deleting
+	if _, err := s.faceRepo.GetByExternalID(ctx, tenantID, externalID); err != nil {
 		return err
 	}
 
-	_ = face
-
+	// Delete from database
 	if err := s.faceRepo.Delete(ctx, tenantID, externalID); err != nil {
 		return fmt.Errorf("tenant %s: delete face: %w", tenantID, err)
 	}

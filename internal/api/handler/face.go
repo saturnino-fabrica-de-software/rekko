@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -66,13 +68,13 @@ func (h *FaceHandler) Register(c *fiber.Ctx) error {
 	// 2. Extract external_id from form
 	externalID := strings.TrimSpace(c.FormValue("external_id"))
 	if externalID == "" {
-		return domain.ErrValidationFailed.WithError(nil)
+		return domain.ErrValidationFailed.WithError(errors.New("external_id is required"))
 	}
 
 	// 3. Extract and validate image
 	imageBytes, err := extractAndValidateImage(c)
 	if err != nil {
-		return err
+		return fmt.Errorf("register face: %w", err)
 	}
 
 	// 4. Call service to register
@@ -101,13 +103,13 @@ func (h *FaceHandler) Verify(c *fiber.Ctx) error {
 	// 2. Extract external_id from form
 	externalID := strings.TrimSpace(c.FormValue("external_id"))
 	if externalID == "" {
-		return domain.ErrValidationFailed.WithError(nil)
+		return domain.ErrValidationFailed.WithError(errors.New("external_id is required"))
 	}
 
 	// 3. Extract and validate image
 	imageBytes, err := extractAndValidateImage(c)
 	if err != nil {
-		return err
+		return fmt.Errorf("verify face: %w", err)
 	}
 
 	// 4. Call service to verify
@@ -136,7 +138,7 @@ func (h *FaceHandler) Delete(c *fiber.Ctx) error {
 	// 2. Extract external_id from URL
 	externalID := strings.TrimSpace(c.Params("external_id"))
 	if externalID == "" {
-		return domain.ErrValidationFailed.WithError(nil)
+		return domain.ErrValidationFailed.WithError(errors.New("external_id is required"))
 	}
 
 	// 3. Call service to delete
