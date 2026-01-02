@@ -4,6 +4,7 @@ go 1.22
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.0
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.5.3
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/testcontainers/testcontainers-go v0.27.0
@@ -26,7 +27,6 @@ require (
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20221227161230-091c0ba34f0a // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
