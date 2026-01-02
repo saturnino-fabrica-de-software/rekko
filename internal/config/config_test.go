@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+const (
+	envProduction  = "production"
+	envDevelopment = "development"
+)
+
 func TestLoad(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -16,14 +21,14 @@ func TestLoad(t *testing.T) {
 			name: "loads with all required vars",
 			envVars: map[string]string{
 				"PORT":           "8080",
-				"ENV":            "production",
+				"ENV":            envProduction,
 				"DATABASE_URL":   "postgres://localhost/test",
 				"API_KEY_SECRET": "secret123",
 			},
 			wantErr: false,
 			check: func(c *Config) bool {
 				return c.Port == 8080 &&
-					c.Environment == "production" &&
+					c.Environment == envProduction &&
 					c.DatabaseURL == "postgres://localhost/test" &&
 					c.APIKeySecret == "secret123"
 			},
@@ -37,7 +42,7 @@ func TestLoad(t *testing.T) {
 			wantErr: false,
 			check: func(c *Config) bool {
 				return c.Port == 3000 &&
-					c.Environment == "development" &&
+					c.Environment == envDevelopment &&
 					c.ProviderType == "deepface"
 			},
 		},
@@ -66,7 +71,9 @@ func TestLoad(t *testing.T) {
 
 			// Set test environment variables
 			for k, v := range tt.envVars {
-				os.Setenv(k, v)
+				if err := os.Setenv(k, v); err != nil {
+					t.Fatalf("failed to set env var %s: %v", k, err)
+				}
 			}
 
 			cfg, err := Load()
@@ -96,8 +103,8 @@ func TestConfig_IsDevelopment(t *testing.T) {
 		env  string
 		want bool
 	}{
-		{"development", "development", true},
-		{"production", "production", false},
+		{envDevelopment, envDevelopment, true},
+		{envProduction, envProduction, false},
 		{"staging", "staging", false},
 		{"empty", "", false},
 	}
@@ -118,8 +125,8 @@ func TestConfig_IsProduction(t *testing.T) {
 		env  string
 		want bool
 	}{
-		{"production", "production", true},
-		{"development", "development", false},
+		{envProduction, envProduction, true},
+		{envDevelopment, envDevelopment, false},
 		{"staging", "staging", false},
 		{"empty", "", false},
 	}
