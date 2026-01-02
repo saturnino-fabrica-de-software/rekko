@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
+
+# Test artifacts
+coverage/
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Scripts (not needed in container)
+scripts/
+
+# Development config
+.air.toml
+docker-compose*.yml
+Dockerfile*
+Makefile
+
+# Build artifacts
+bin/
+build/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude
+.claude/

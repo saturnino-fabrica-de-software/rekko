@@ -1,0 +1,70 @@
+package api
+
+import (
+	"log/slog"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
+
+	"github.com/saturnino-fabrica-de-software/rekko/internal/api/handler"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
+)
+
+type Router struct {
+	app    *fiber.App
+	logger *slog.Logger
+}
+
+func NewRouter(logger *slog.Logger) *Router {
+	app := fiber.New(fiber.Config{
+		ErrorHandler: middleware.ErrorHandler(logger),
+		AppName:      "Rekko API",
+	})
+
+	return &Router{
+		app:    app,
+		logger: logger,
+	}
+}
+
+func (r *Router) Setup() {
+	// Global middlewares
+	r.app.Use(requestid.New())
+	r.app.Use(middleware.Recover(r.logger))
+	r.app.Use(middleware.Logger(r.logger))
+	r.app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowMethods: "GET,POST,PUT,DELETE,OPTIONS",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization,X-Tenant-ID",
+	}))
+
+	// Health check endpoints (no auth required)
+	healthHandler := handler.NewHealthHandler()
+	r.app.Get("/health", healthHandler.Health)
+	r.app.Get("/ready", healthHandler.Ready)
+
+	// API v1 group
+	v1 := r.app.Group("/v1")
+
+	// TODO: Add authenticated routes here
+	// v1.Use(middleware.Auth())
+	// v1.Post("/faces", faceHandler.Register)
+	// v1.Post("/faces/verify", faceHandler.Verify)
+	// v1.Delete("/faces/:external_id", faceHandler.Delete)
+	// v1.Get("/usage", usageHandler.Get)
+
+	_ = v1 // Avoid unused variable warning
+}
+
+func (r *Router) App() *fiber.App {
+	return r.app
+}
+
+func (r *Router) Listen(addr string) error {
+	return r.app.Listen(addr)
+}
+
+func (r *Router) Shutdown() error {
+	return r.app.Shutdown()
+}
