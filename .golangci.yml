@@ -1,0 +1,57 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - goconst
+    - gocyclo
+    - gosec
+    - prealloc
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  gocyclo:
+    min-complexity: 15
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+
+  gosec:
+    excludes:
+      - G104
+
+issues:
+  exclude-dirs:
+    - vendor
+    - tmp
+
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gosec
+        - goconst
+        - errcheck
+
+  max-issues-per-linter: 50
+  max-same-issues: 10
