@@ -134,20 +134,14 @@ case "$1" in
 
     seed)
         print_info "Seeding database with test data..."
-        PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME << 'EOF'
--- Create test tenant
-INSERT INTO tenants (name, api_key_hash, settings, is_active)
-VALUES (
-    'Test Tenant',
-    'test_hash_' || md5(random()::text),
-    '{"plan": "pro", "max_faces": 1000}',
-    true
-)
-ON CONFLICT DO NOTHING;
-
-SELECT 'Seed completed. Tenant count: ' || count(*) FROM tenants;
-EOF
+        if [ -f "./scripts/seed_test_tenant.sql" ]; then
+            PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f ./scripts/seed_test_tenant.sql
+        else
+            print_error "Seed file not found: ./scripts/seed_test_tenant.sql"
+            exit 1
+        fi
         print_success "Database seeded successfully"
+        print_info "Test API Key: test-api-key-rekko-dev"
         ;;
 
     *)
