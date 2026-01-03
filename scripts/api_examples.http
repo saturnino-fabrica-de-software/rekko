@@ -1,0 +1,325 @@
+###
+# Rekko FRaaS - API Examples
+# Use with VS Code REST Client extension or similar
+###
+
+# Configuration
+@baseUrl = http://localhost:8080
+@apiKey = test-api-key-rekko-dev
+@externalId = user-test-123
+
+# Sample 1x1 pixel image (base64)
+# For real tests, replace with actual face image
+@sampleImage = iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=
+
+###############################################################################
+# Health Check
+###############################################################################
+
+### Health check
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+###############################################################################
+# Face Registration
+###############################################################################
+
+### Register a new face
+POST {{baseUrl}}/api/v1/faces
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_id": "{{externalId}}",
+  "image_base64": "{{sampleImage}}",
+  "metadata": {
+    "name": "John Doe",
+    "event": "Tech Conference 2024",
+    "ticket_number": "T-12345",
+    "vip": true,
+    "registered_at": "2024-01-15T10:30:00Z"
+  }
+}
+
+### Register face with minimal data
+POST {{baseUrl}}/api/v1/faces
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_id": "user-minimal-456",
+  "image_base64": "{{sampleImage}}"
+}
+
+###############################################################################
+# Face Verification (1:1)
+###############################################################################
+
+### Verify face against registered user
+POST {{baseUrl}}/api/v1/verify
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_id": "{{externalId}}",
+  "image_base64": "{{sampleImage}}"
+}
+
+### Verify with liveness check
+POST {{baseUrl}}/api/v1/verify
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_id": "{{externalId}}",
+  "image_base64": "{{sampleImage}}",
+  "liveness_check": true
+}
+
+###############################################################################
+# Face Search (1:N)
+###############################################################################
+
+### Search for similar faces
+POST {{baseUrl}}/api/v1/search
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "image_base64": "{{sampleImage}}",
+  "threshold": 0.8,
+  "limit": 10
+}
+
+### Search with high precision
+POST {{baseUrl}}/api/v1/search
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "image_base64": "{{sampleImage}}",
+  "threshold": 0.95,
+  "limit": 5
+}
+
+### Search with metadata filter
+POST {{baseUrl}}/api/v1/search
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "image_base64": "{{sampleImage}}",
+  "threshold": 0.8,
+  "limit": 10,
+  "metadata_filter": {
+    "event": "Tech Conference 2024",
+    "vip": true
+  }
+}
+
+###############################################################################
+# Face Retrieval
+###############################################################################
+
+### Get face by external ID
+GET {{baseUrl}}/api/v1/faces/{{externalId}}
+X-API-Key: {{apiKey}}
+
+### Get face with full metadata
+GET {{baseUrl}}/api/v1/faces/{{externalId}}?include_metadata=true
+X-API-Key: {{apiKey}}
+
+###############################################################################
+# Face Update
+###############################################################################
+
+### Update face metadata
+PUT {{baseUrl}}/api/v1/faces/{{externalId}}
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "metadata": {
+    "name": "John Doe (Updated)",
+    "event": "Tech Conference 2024",
+    "ticket_number": "T-12345",
+    "vip": true,
+    "check_in_time": "2024-01-15T14:30:00Z"
+  }
+}
+
+### Re-register face (update embedding)
+PUT {{baseUrl}}/api/v1/faces/{{externalId}}/embedding
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "image_base64": "{{sampleImage}}"
+}
+
+###############################################################################
+# Face Deletion
+###############################################################################
+
+### Delete face (soft delete)
+DELETE {{baseUrl}}/api/v1/faces/{{externalId}}
+X-API-Key: {{apiKey}}
+
+### Delete face (hard delete with GDPR compliance)
+DELETE {{baseUrl}}/api/v1/faces/{{externalId}}?hard_delete=true
+X-API-Key: {{apiKey}}
+
+###############################################################################
+# Audit & Analytics
+###############################################################################
+
+### List verifications (audit log)
+GET {{baseUrl}}/api/v1/verifications?limit=20&offset=0
+X-API-Key: {{apiKey}}
+
+### List verifications by date range
+GET {{baseUrl}}/api/v1/verifications?start_date=2024-01-01&end_date=2024-01-31&limit=100
+X-API-Key: {{apiKey}}
+
+### List verifications by external ID
+GET {{baseUrl}}/api/v1/verifications?external_id={{externalId}}&limit=50
+X-API-Key: {{apiKey}}
+
+### Get verification statistics
+GET {{baseUrl}}/api/v1/stats/verifications?period=daily&start_date=2024-01-01
+X-API-Key: {{apiKey}}
+
+###############################################################################
+# Batch Operations
+###############################################################################
+
+### Batch register faces
+POST {{baseUrl}}/api/v1/faces/batch
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "faces": [
+    {
+      "external_id": "batch-user-1",
+      "image_base64": "{{sampleImage}}",
+      "metadata": {"name": "User 1"}
+    },
+    {
+      "external_id": "batch-user-2",
+      "image_base64": "{{sampleImage}}",
+      "metadata": {"name": "User 2"}
+    },
+    {
+      "external_id": "batch-user-3",
+      "image_base64": "{{sampleImage}}",
+      "metadata": {"name": "User 3"}
+    }
+  ]
+}
+
+### Batch delete faces
+DELETE {{baseUrl}}/api/v1/faces/batch
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_ids": ["batch-user-1", "batch-user-2", "batch-user-3"]
+}
+
+###############################################################################
+# Error Cases (for testing error handling)
+###############################################################################
+
+### Missing API Key
+POST {{baseUrl}}/api/v1/faces
+Content-Type: application/json
+
+{
+  "external_id": "test-no-key",
+  "image_base64": "{{sampleImage}}"
+}
+
+### Invalid API Key
+POST {{baseUrl}}/api/v1/faces
+Content-Type: application/json
+X-API-Key: invalid-key-12345
+
+{
+  "external_id": "test-invalid-key",
+  "image_base64": "{{sampleImage}}"
+}
+
+### Missing required field
+POST {{baseUrl}}/api/v1/faces
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "image_base64": "{{sampleImage}}"
+}
+
+### Invalid image format
+POST {{baseUrl}}/api/v1/faces
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_id": "test-invalid-image",
+  "image_base64": "not-a-valid-base64-image"
+}
+
+### Face not found
+GET {{baseUrl}}/api/v1/faces/non-existent-user
+X-API-Key: {{apiKey}}
+
+### Duplicate registration
+POST {{baseUrl}}/api/v1/faces
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_id": "{{externalId}}",
+  "image_base64": "{{sampleImage}}"
+}
+
+###############################################################################
+# Rate Limiting Tests
+###############################################################################
+
+### Test rate limiting (send multiple requests rapidly)
+# @name rapidRequests
+< {%
+    for (let i = 0; i < 100; i++) {
+        client.test("Request " + i, function() {
+            client.log("Sending request " + i);
+        });
+    }
+%}
+
+POST {{baseUrl}}/api/v1/verify
+Content-Type: application/json
+X-API-Key: {{apiKey}}
+
+{
+  "external_id": "{{externalId}}",
+  "image_base64": "{{sampleImage}}"
+}
+
+###############################################################################
+# Notes
+###############################################################################
+
+# 1. Replace {{sampleImage}} with actual base64-encoded face images for real testing
+# 2. To encode an image to base64:
+#    - Linux/Mac: base64 -i face.jpg | tr -d '\n'
+#    - Python: base64.b64encode(open('face.jpg', 'rb').read()).decode()
+# 3. Recommended image specs:
+#    - Format: JPEG, PNG
+#    - Min size: 640x480
+#    - Max size: 4096x4096
+#    - Max file size: 5MB
+#    - Face must be clearly visible and front-facing
+# 4. For testing with VS Code REST Client:
+#    - Install extension: humao.rest-client
+#    - Open this file and click "Send Request" above each request
