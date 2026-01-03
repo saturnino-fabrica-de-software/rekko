@@ -1,7 +1,7 @@
 .PHONY: help db-up db-down db-reset db-status db-psql db-migrate-up db-migrate-down docker-up docker-down docker-logs clean dev-server test-coverage docker-build goimports
 
-# Load environment variables
-include .env
+# Load environment variables (optional)
+-include .env
 export
 
 help: ## Show this help message
@@ -109,6 +109,28 @@ test-coverage: ## Run tests with coverage
 
 bench: ## Run benchmarks
 	go test -bench=. -benchmem ./...
+
+bench-rekognition: ## Run Rekognition provider benchmarks
+	@echo "Running Rekognition provider benchmarks..."
+	@go test -bench=. -benchmem ./internal/provider/rekognition/
+
+bench-rekognition-cpu: ## Run Rekognition benchmarks with CPU profile
+	@echo "Running Rekognition benchmarks with CPU profile..."
+	@go test -bench=BenchmarkSearchFacesByImage -benchmem -cpuprofile=cpu.prof ./internal/provider/rekognition/
+	@echo "CPU profile saved to cpu.prof"
+	@echo "View with: go tool pprof -http=:8080 cpu.prof"
+
+bench-rekognition-mem: ## Run Rekognition benchmarks with memory profile
+	@echo "Running Rekognition benchmarks with memory profile..."
+	@go test -bench=BenchmarkSearchFacesByImage -benchmem -memprofile=mem.prof ./internal/provider/rekognition/
+	@echo "Memory profile saved to mem.prof"
+	@echo "View with: go tool pprof -http=:8080 mem.prof"
+
+bench-rekognition-compare: ## Compare Rekognition benchmarks (saves to rekognition-bench.txt)
+	@echo "Running Rekognition benchmarks (5 iterations)..."
+	@go test -bench=. -benchmem -count=5 ./internal/provider/rekognition/ | tee rekognition-bench.txt
+	@echo "Results saved to rekognition-bench.txt"
+	@echo "To compare with previous results: benchstat old.txt rekognition-bench.txt"
 
 # Code quality
 lint: ## Run linter
