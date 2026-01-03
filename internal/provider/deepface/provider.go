@@ -4,9 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"math"
 
 	"github.com/google/uuid"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
+)
+
+const (
+	// minFaceArea is the minimum face area (in pixels²) for reliable detection
+	minFaceArea = 2500 // 50x50 pixels
+	// maxFaceArea is used for confidence scaling
+	maxFaceArea = 250000 // 500x500 pixels
 )
 
 // Provider implements provider.FaceProvider using DeepFace API
@@ -32,6 +40,11 @@ func (p *Provider) DetectFaces(ctx context.Context, image []byte) ([]provider.De
 
 	faces := make([]provider.DetectedFace, 0, len(resp.Results))
 	for _, result := range resp.Results {
+		// Calculate confidence based on face area (larger faces = more reliable detection)
+		faceArea := float64(result.FacialArea.W * result.FacialArea.H)
+		confidence := calculateConfidence(faceArea)
+		qualityScore := calculateQuality(faceArea)
+
 		faces = append(faces, provider.DetectedFace{
 			BoundingBox: provider.BoundingBox{
 				X:      float64(result.FacialArea.X),
@@ -39,12 +52,36 @@ func (p *Provider) DetectFaces(ctx context.Context, image []byte) ([]provider.De
 				Width:  float64(result.FacialArea.W),
 				Height: float64(result.FacialArea.H),
 			},
-			Confidence:   0.99, // DeepFace doesn't return confidence, assume high if detected
-			QualityScore: 0.95, // DeepFace doesn't return quality, assume good
+			Confidence:   confidence,
+			QualityScore: qualityScore,
 		})
 	}
 
 	return faces, nil
+}
+
+// calculateConfidence estimates confidence based on face area
+// DeepFace doesn't return confidence, so we estimate based on face size
+// Larger faces are more likely to be accurately detected
+func calculateConfidence(faceArea float64) float64 {
+	if faceArea < minFaceArea {
+		return 0.5 // Low confidence for very small faces
+	}
+	// Scale from 0.7 to 0.99 based on face area
+	normalized := math.Min(1.0, (faceArea-minFaceArea)/(maxFaceArea-minFaceArea))
+	return 0.7 + (normalized * 0.29)
+}
+
+// calculateQuality estimates quality score based on face area
+// DeepFace doesn't return quality, so we estimate based on face size
+// Larger faces typically have better quality for embedding extraction
+func calculateQuality(faceArea float64) float64 {
+	if faceArea < minFaceArea {
+		return 0.4 // Low quality for very small faces
+	}
+	// Scale from 0.6 to 0.95 based on face area
+	normalized := math.Min(1.0, (faceArea-minFaceArea)/(maxFaceArea-minFaceArea))
+	return 0.6 + (normalized * 0.35)
 }
 
 // IndexFace extracts face embedding from image

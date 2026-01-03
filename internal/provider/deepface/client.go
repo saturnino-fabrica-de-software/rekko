@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -78,19 +79,34 @@ func (c *Client) Analyze(ctx context.Context, imageBase64 string) (*AnalyzeRespo
 	return &resp, nil
 }
 
+// maxBackoff is the maximum backoff duration for retries
+const maxBackoff = 30 * time.Second
+
+// calculateBackoff calculates exponential backoff duration for a given attempt
+// Returns 1s, 2s, 4s, 8s, etc. up to maxBackoff
+func calculateBackoff(attempt int) time.Duration {
+	if attempt <= 0 {
+		return time.Second
+	}
+	// Calculate 2^(attempt-1) seconds safely
+	seconds := 1
+	for i := 1; i < attempt && i < 6; i++ {
+		seconds *= 2
+	}
+	return time.Duration(seconds) * time.Second
+}
+
 // doRequestWithRetry executes HTTP request with retry logic
 func (c *Client) doRequestWithRetry(ctx context.Context, method, path string, body interface{}, result interface{}) error {
 	var lastErr error
 
 	for attempt := 0; attempt <= c.config.RetryCount; attempt++ {
 		if attempt > 0 {
-			// Exponential backoff: 1s, 2s, 4s
-			// Cap the shift value to prevent overflow
-			var backoffSeconds int64 = 1
-			for i := 1; i < attempt && i < 10; i++ {
-				backoffSeconds *= 2
+			// Exponential backoff: 1s, 2s, 4s, capped at maxBackoff
+			backoff := calculateBackoff(attempt)
+			if backoff > maxBackoff {
+				backoff = maxBackoff
 			}
-			backoff := time.Duration(backoffSeconds) * time.Second
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -103,13 +119,33 @@ func (c *Client) doRequestWithRetry(ctx context.Context, method, path string, bo
 			return nil
 		}
 
-		// Don't retry on context errors or client errors (4xx)
+		// Don't retry on context errors
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+
+		// Don't retry on client errors (4xx) - only retry on server errors (5xx)
+		if isClientError(lastErr) {
+			return lastErr
 		}
 	}
 
 	return fmt.Errorf("%w: %v", ErrDeepFaceUnavailable, lastErr)
+}
+
+// isClientError checks if the error is a 4xx client error
+func isClientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// Check for status 4xx patterns
+	for status := 400; status < 500; status++ {
+		if strings.Contains(errStr, fmt.Sprintf("status %d", status)) {
+			return true
+		}
+	}
+	return false
 }
 
 // doRequest executes a single HTTP request

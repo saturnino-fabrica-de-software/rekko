@@ -345,7 +345,7 @@ func TestClient_NoRetryOnClientError(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "status 400")
-	assert.Equal(t, 4, attempts, "should retry even on 4xx errors (current implementation)")
+	assert.Equal(t, 1, attempts, "should NOT retry on 4xx client errors")
 }
 
 func TestClient_ExponentialBackoff(t *testing.T) {
