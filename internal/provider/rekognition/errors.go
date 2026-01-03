@@ -20,4 +20,7 @@ var (
 
 	// ErrFaceNotFound indicates that the specified face ID was not found in the collection
 	ErrFaceNotFound = errors.New("face not found in rekognition collection")
+
+	// ErrInvalidImage is returned when image data is invalid (empty, too small, or too large)
+	ErrInvalidImage = errors.New("invalid image data")
 )
