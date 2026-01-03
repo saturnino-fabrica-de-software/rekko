@@ -133,15 +133,13 @@ case "$1" in
         ;;
 
     seed)
-        print_info "Seeding database with test data..."
-        if [ -f "./scripts/seed_test_tenant.sql" ]; then
-            PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f ./scripts/seed_test_tenant.sql
+        print_info "Seeding database with development data..."
+        if [ -f "./scripts/seed_dev.sql" ]; then
+            PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -f ./scripts/seed_dev.sql
         else
-            print_error "Seed file not found: ./scripts/seed_test_tenant.sql"
+            print_error "Seed file not found: ./scripts/seed_dev.sql"
             exit 1
         fi
-        print_success "Database seeded successfully"
-        print_info "Test API Key: test-api-key-rekko-dev"
         ;;
 
     *)

@@ -111,6 +111,30 @@ var (
 		StatusCode: 404,
 	}
 
+	ErrTenantInactive = &AppError{
+		Code:       "TENANT_INACTIVE",
+		Message:    "Tenant account is inactive",
+		StatusCode: 403,
+	}
+
+	ErrAPIKeyNotFound = &AppError{
+		Code:       "API_KEY_NOT_FOUND",
+		Message:    "API key not found",
+		StatusCode: 404,
+	}
+
+	ErrAPIKeyRevoked = &AppError{
+		Code:       "API_KEY_REVOKED",
+		Message:    "API key has been revoked",
+		StatusCode: 401,
+	}
+
+	ErrInvalidAPIKeyFormat = &AppError{
+		Code:       "INVALID_API_KEY_FORMAT",
+		Message:    "Invalid API key format",
+		StatusCode: 401,
+	}
+
 	ErrRateLimitExceeded = &AppError{
 		Code:       "RATE_LIMIT_EXCEEDED",
 		Message:    "Rate limit exceeded, please try again later",

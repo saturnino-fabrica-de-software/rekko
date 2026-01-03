@@ -18,15 +18,18 @@ import (
 
 type Dependencies struct {
 	TenantRepo       *repository.TenantRepository
+	APIKeyRepo       *repository.APIKeyRepository
 	FaceRepo         *repository.FaceRepository
 	VerificationRepo *repository.VerificationRepository
 	FaceProvider     provider.FaceProvider
+	LastUsedWorker   *middleware.LastUsedWorker
 }
 
 type Router struct {
-	app    *fiber.App
-	logger *slog.Logger
-	deps   *Dependencies
+	app         *fiber.App
+	logger      *slog.Logger
+	deps        *Dependencies
+	rateLimiter *middleware.RateLimiter
 }
 
 func NewRouter(logger *slog.Logger, deps *Dependencies) *Router {
@@ -68,7 +71,17 @@ func (r *Router) Setup() {
 	// Only configure authenticated routes if dependencies were provided
 	if r.deps != nil {
 		// Auth middleware
-		v1.Use(middleware.Auth(r.deps.TenantRepo))
+		authDeps := middleware.AuthDependencies{
+			TenantRepo:     r.deps.TenantRepo,
+			APIKeyRepo:     r.deps.APIKeyRepo,
+			Logger:         r.logger,
+			LastUsedWorker: r.deps.LastUsedWorker,
+		}
+		v1.Use(middleware.Auth(authDeps))
+
+		// Rate limiting (per tenant) - must come after auth to have tenant context
+		r.rateLimiter = middleware.NewRateLimiter(middleware.DefaultRateLimiterConfig())
+		v1.Use(r.rateLimiter.Handler())
 
 		// Face service
 		faceService := service.NewFaceService(
@@ -96,5 +109,9 @@ func (r *Router) Listen(addr string) error {
 }
 
 func (r *Router) Shutdown() error {
+	// Stop rate limiter cleanup goroutine
+	if r.rateLimiter != nil {
+		r.rateLimiter.Stop()
+	}
 	return r.app.Shutdown()
 }

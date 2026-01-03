@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/config"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider/mock"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
@@ -56,6 +57,7 @@ func run() error {
 
 	// Create repositories
 	tenantRepo := repository.NewTenantRepository(pool)
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	faceRepo := repository.NewFaceRepository(pool)
 	verificationRepo := repository.NewVerificationRepository(pool)
 
@@ -63,12 +65,23 @@ func run() error {
 	faceProvider := mock.New()
 	logger.Info("using mock face provider")
 
+	// Create last used worker for async API key updates
+	lastUsedWorker := middleware.NewLastUsedWorker(
+		apiKeyRepo,
+		logger,
+		middleware.DefaultLastUsedWorkerConfig(),
+	)
+	lastUsedWorker.Start()
+	defer lastUsedWorker.Stop()
+
 	// Setup dependencies
 	deps := &api.Dependencies{
 		TenantRepo:       tenantRepo,
+		APIKeyRepo:       apiKeyRepo,
 		FaceRepo:         faceRepo,
 		VerificationRepo: verificationRepo,
 		FaceProvider:     faceProvider,
+		LastUsedWorker:   lastUsedWorker,
 	}
 
 	// Setup router with dependencies

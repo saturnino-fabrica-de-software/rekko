@@ -43,16 +43,32 @@ db-dump: ## Create database backup
 	@./scripts/db.sh dump
 
 # Migration commands
-db-migrate-up: ## Run all pending migrations
+migrate-up: ## Run all pending migrations
+	@go run ./cmd/migrate -action=up
+
+migrate-down: ## Rollback last migration
+	@go run ./cmd/migrate -action=down
+
+migrate-version: ## Show current migration version
+	@go run ./cmd/migrate -action=version
+
+migrate-force: ## Force migration version (use: make migrate-force STEPS=1)
+	@go run ./cmd/migrate -action=force -steps=$(STEPS)
+
+migrate-test: ## Test migrations (validate schema)
+	@./scripts/test-migrations.sh
+
+# Legacy migration commands (using db.sh script)
+db-migrate-up: ## Run all pending migrations (legacy)
 	@./scripts/db.sh up
 
-db-migrate-down: ## Rollback last migration
+db-migrate-down: ## Rollback last migration (legacy)
 	@./scripts/db.sh down
 
 db-migrate-reset: ## Reset database (drop + recreate)
 	@./scripts/db.sh reset
 
-db-migrate-version: ## Show current migration version
+db-migrate-version: ## Show current migration version (legacy)
 	@./scripts/db.sh version
 
 # Development workflow
