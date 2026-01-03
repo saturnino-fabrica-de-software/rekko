@@ -142,7 +142,7 @@ func TestAuth(t *testing.T) {
 					IsActive:  true,
 				}
 				mk.On("GetByHash", mock.Anything, validHash).Return(apiKey, nil)
-				mk.On("UpdateLastUsed", mock.Anything, apiKeyID).Return(nil)
+				// Note: UpdateLastUsed is now handled by LastUsedWorker asynchronously
 
 				tenant := &domain.Tenant{
 					ID:       tenantID,

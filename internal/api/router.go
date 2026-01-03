@@ -22,6 +22,7 @@ type Dependencies struct {
 	FaceRepo         *repository.FaceRepository
 	VerificationRepo *repository.VerificationRepository
 	FaceProvider     provider.FaceProvider
+	LastUsedWorker   *middleware.LastUsedWorker
 }
 
 type Router struct {
@@ -70,11 +71,16 @@ func (r *Router) Setup() {
 	if r.deps != nil {
 		// Auth middleware
 		authDeps := middleware.AuthDependencies{
-			TenantRepo: r.deps.TenantRepo,
-			APIKeyRepo: r.deps.APIKeyRepo,
-			Logger:     r.logger,
+			TenantRepo:     r.deps.TenantRepo,
+			APIKeyRepo:     r.deps.APIKeyRepo,
+			Logger:         r.logger,
+			LastUsedWorker: r.deps.LastUsedWorker,
 		}
 		v1.Use(middleware.Auth(authDeps))
+
+		// Rate limiting (per tenant) - must come after auth to have tenant context
+		rateLimiter := middleware.NewRateLimiter(middleware.DefaultRateLimiterConfig())
+		v1.Use(rateLimiter.Handler())
 
 		// Face service
 		faceService := service.NewFaceService(

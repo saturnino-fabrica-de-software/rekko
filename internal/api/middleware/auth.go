@@ -1,10 +1,8 @@
 package middleware
 
 import (
-	"context"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -24,9 +22,10 @@ const (
 
 // AuthDependencies contains dependencies for authentication middleware
 type AuthDependencies struct {
-	TenantRepo repository.TenantRepositoryInterface
-	APIKeyRepo repository.APIKeyRepositoryInterface
-	Logger     *slog.Logger
+	TenantRepo     repository.TenantRepositoryInterface
+	APIKeyRepo     repository.APIKeyRepositoryInterface
+	Logger         *slog.Logger
+	LastUsedWorker *LastUsedWorker // Optional: if nil, last_used updates are skipped
 }
 
 // Auth creates an authentication middleware using API Key
@@ -87,18 +86,9 @@ func Auth(deps AuthDependencies) fiber.Handler {
 		)
 
 		// 9. Update last used in background (non-blocking, after all validations passed)
-		go func(keyID uuid.UUID, prefix string) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-
-			if err := deps.APIKeyRepo.UpdateLastUsed(ctx, keyID); err != nil {
-				deps.Logger.Error("failed to update last used",
-					"key_id", keyID,
-					"key_prefix", prefix,
-					"error", err,
-				)
-			}
-		}(apiKeyEntity.ID, apiKeyEntity.KeyPrefix)
+		if deps.LastUsedWorker != nil {
+			deps.LastUsedWorker.Enqueue(apiKeyEntity.ID)
+		}
 
 		return c.Next()
 	}
