@@ -2,14 +2,15 @@ package middleware
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 
 	"github.com/saturnino-fabrica-de-software/rekko/internal/domain"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
 )
 
 const (
@@ -17,41 +18,87 @@ const (
 	LocalTenantID = "tenant_id"
 	// LocalTenant is the key to retrieve the full tenant from context
 	LocalTenant = "tenant"
+	// LocalAPIKey is the key to retrieve the API key entity from context
+	LocalAPIKey = "api_key"
 )
 
-// TenantRepository interface for tenant lookup
-type TenantRepository interface {
-	GetByAPIKeyHash(ctx context.Context, apiKeyHash string) (*domain.Tenant, error)
+// AuthDependencies contains dependencies for authentication middleware
+type AuthDependencies struct {
+	TenantRepo repository.TenantRepositoryInterface
+	APIKeyRepo repository.APIKeyRepositoryInterface
+	Logger     *slog.Logger
 }
 
 // Auth creates an authentication middleware using API Key
-func Auth(tenantRepo TenantRepository) fiber.Handler {
+func Auth(deps AuthDependencies) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// 1. Extract Bearer token
 		apiKey := extractBearerToken(c)
 		if apiKey == "" {
+			deps.Logger.Debug("missing authorization header")
 			return domain.ErrUnauthorized
 		}
 
-		// 2. Generate API Key hash
-		hash := hashAPIKey(apiKey)
+		// 2. Validate format
+		if !domain.IsValidFormat(apiKey) {
+			deps.Logger.Warn("invalid api key format", "prefix", extractPrefix(apiKey))
+			return domain.ErrInvalidAPIKeyFormat
+		}
 
-		// 3. Lookup tenant by hash
-		tenant, err := tenantRepo.GetByAPIKeyHash(c.Context(), hash)
+		// 3. Hash and lookup
+		hash := domain.HashAPIKey(apiKey)
+
+		// 4. Get API Key from repository
+		apiKeyEntity, err := deps.APIKeyRepo.GetByHash(c.Context(), hash)
 		if err != nil {
-			// Any error (not found or DB error) returns 401
-			// Don't reveal whether API Key exists or not
+			deps.Logger.Warn("api key not found", "error", err)
 			return domain.ErrUnauthorized
 		}
 
-		// 4. Verify tenant is active
+		// 5. Check if API key is active
+		if !apiKeyEntity.IsActive {
+			deps.Logger.Warn("api key is inactive", "key_id", apiKeyEntity.ID, "key_prefix", apiKeyEntity.KeyPrefix)
+			return domain.ErrAPIKeyRevoked
+		}
+
+		// 6. Get tenant
+		tenant, err := deps.TenantRepo.GetByID(c.Context(), apiKeyEntity.TenantID)
+		if err != nil {
+			deps.Logger.Warn("tenant not found", "tenant_id", apiKeyEntity.TenantID, "error", err)
+			return domain.ErrUnauthorized
+		}
+
+		// 7. Check tenant is active
 		if !tenant.IsActive {
-			return domain.ErrUnauthorized
+			deps.Logger.Warn("tenant is inactive", "tenant_id", tenant.ID, "tenant_slug", tenant.Slug)
+			return domain.ErrTenantInactive
 		}
 
-		// 5. Set tenant in context
+		// 8. Store in context
 		c.Locals(LocalTenantID, tenant.ID)
 		c.Locals(LocalTenant, tenant)
+		c.Locals(LocalAPIKey, apiKeyEntity)
+
+		deps.Logger.Debug("authenticated",
+			"tenant_id", tenant.ID,
+			"tenant_slug", tenant.Slug,
+			"api_key_prefix", apiKeyEntity.KeyPrefix,
+			"environment", apiKeyEntity.Environment,
+		)
+
+		// 9. Update last used in background (non-blocking, after all validations passed)
+		go func(keyID uuid.UUID, prefix string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err := deps.APIKeyRepo.UpdateLastUsed(ctx, keyID); err != nil {
+				deps.Logger.Error("failed to update last used",
+					"key_id", keyID,
+					"key_prefix", prefix,
+					"error", err,
+				)
+			}
+		}(apiKeyEntity.ID, apiKeyEntity.KeyPrefix)
 
 		return c.Next()
 	}
@@ -73,10 +120,12 @@ func extractBearerToken(c *fiber.Ctx) string {
 	return strings.TrimSpace(parts[1])
 }
 
-// hashAPIKey generates SHA-256 hash of API Key
-func hashAPIKey(apiKey string) string {
-	hash := sha256.Sum256([]byte(apiKey))
-	return hex.EncodeToString(hash[:])
+// extractPrefix safely extracts first 16 characters for logging
+func extractPrefix(apiKey string) string {
+	if len(apiKey) >= 16 {
+		return apiKey[:16]
+	}
+	return apiKey
 }
 
 // GetTenantID retrieves tenant_id from Fiber context
@@ -95,4 +144,13 @@ func GetTenant(c *fiber.Ctx) (*domain.Tenant, error) {
 		return nil, domain.ErrUnauthorized
 	}
 	return tenant, nil
+}
+
+// GetAPIKey retrieves API key entity from Fiber context
+func GetAPIKey(c *fiber.Ctx) (*domain.APIKey, error) {
+	apiKey, ok := c.Locals(LocalAPIKey).(*domain.APIKey)
+	if !ok {
+		return nil, domain.ErrUnauthorized
+	}
+	return apiKey, nil
 }

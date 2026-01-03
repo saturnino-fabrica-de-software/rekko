@@ -2,7 +2,76 @@
 
 Utility scripts para desenvolvimento e manutenção do Rekko.
 
+## seed_dev.sql
+
+**Script de seed de desenvolvimento** - Cria um tenant de desenvolvimento com API Key fixa para facilitar testes locais.
+
+> **ATENÇÃO**: Este script é APENAS para desenvolvimento local. NUNCA use em produção!
+
+### API Key de Desenvolvimento
+
+Para facilitar testes locais, use a seguinte API Key fixa:
+
+```
+API Key: rekko_test_devdevdevdevdevdevdevdevdevdev00
+SHA256:  adf716ab3ebb2a1138973de4a44fe454c05c0d070e897fc55220af74807b25ae
+```
+
+### Tenant Criado
+
+- **ID**: `00000000-0000-0000-0000-000000000001`
+- **Nome**: `Rekko Development`
+- **Plan**: `enterprise` (todas as features habilitadas)
+- **Rate Limit**: 1000 req/s
+
+### Configurações
+
+```json
+{
+  "plan": "enterprise",
+  "rate_limit": 1000,
+  "features": ["liveness", "search", "bulk_import"],
+  "verification_threshold": 0.8,
+  "max_faces_per_user": 10,
+  "liveness_required": false,
+  "retention_days": 90,
+  "webhook_url": null
+}
+```
+
+### Uso
+
+#### Método 1: Script db.sh (recomendado)
+
+```bash
+./scripts/db.sh seed
+```
+
+#### Método 2: Direto com psql
+
+```bash
+psql $DATABASE_URL -f scripts/seed_dev.sql
+```
+
+#### Método 3: Docker Compose
+
+```bash
+docker compose exec postgres psql -U rekko -d rekko_dev -f /scripts/seed_dev.sql
+```
+
+### Idempotência
+
+O script é idempotente - pode ser executado múltiplas vezes sem efeitos colaterais. Ele:
+
+1. Deleta dados relacionados ao "Rekko Development" (se existir)
+2. Deleta o tenant "Rekko Development" (se existir)
+3. Recria o tenant com configurações enterprise
+
+---
+
 ## seed_test_tenant.sql
+
+**DEPRECATED**: Use `seed_dev.sql` ao invés deste script.
 
 Cria um tenant de teste para desenvolvimento local.
 
@@ -326,12 +395,47 @@ cd /path/to/rekko
 ```bash
 # Verificar se tenant foi criado
 ./scripts/db.sh psql
-SELECT id, name, api_key_hash FROM tenants WHERE name = 'Test Tenant';
+SELECT id, name, api_key_hash FROM tenants WHERE name = 'Rekko Development';
 
 # Verificar hash correto
-# Hash de "test-api-key-rekko-dev" deve ser:
-# 4a526689e4037a92c11b6228a6aea1a26247875054585e177228365b9720e770
+# Hash de "rekko_test_devdevdevdevdevdevdevdevdevdev00" deve ser:
+# adf716ab3ebb2a1138973de4a44fe454c05c0d070e897fc55220af74807b25ae
 
 # Re-seed se necessário
 ./scripts/db.sh seed
 ```
+
+---
+
+## calc_api_hash.go
+
+Utilitário para calcular o hash SHA256 de API keys.
+
+### Uso
+
+```bash
+go run scripts/calc_api_hash.go <api_key>
+```
+
+### Exemplo
+
+```bash
+$ go run scripts/calc_api_hash.go rekko_test_devdevdevdevdevdevdevdevdevdev00
+API Key: rekko_test_devdevdevdevdevdevdevdevdevdev00
+SHA256:  adf716ab3ebb2a1138973de4a44fe454c05c0d070e897fc55220af74807b25ae
+```
+
+### Quando Usar
+
+- Criar novos tenants manualmente
+- Verificar se hash está correto
+- Debug de autenticação
+- Gerar hashes para testes
+
+### Nota de Segurança
+
+Em produção, as API keys devem ser:
+1. Geradas aleatoriamente (não fixas)
+2. Armazenadas apenas como hash SHA256
+3. Nunca logadas ou expostas
+4. Rotacionadas periodicamente

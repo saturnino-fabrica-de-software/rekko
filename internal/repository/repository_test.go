@@ -35,29 +35,31 @@ func TestTenantRepository_GetByAPIKeyHash(t *testing.T) {
 			apiKeyHash: "hash_valid_key",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "api_key_hash", "settings", "is_active", "created_at", "updated_at",
+					"id", "name", "slug", "is_active", "plan", "settings", "created_at", "updated_at",
 				}).AddRow(
 					tenantID,
 					"Test Tenant",
-					"hash_valid_key",
-					map[string]interface{}{"key": "value"},
+					"test-tenant",
 					true,
+					"starter",
+					map[string]interface{}{"key": "value"},
 					now,
 					now,
 				)
 
-				mock.ExpectQuery(`SELECT id, name, api_key_hash, settings, is_active, created_at, updated_at FROM tenants WHERE api_key_hash = \$1 AND is_active = true`).
+				mock.ExpectQuery(`SELECT t.id, t.name, t.slug, t.is_active, t.plan, t.settings, t.created_at, t.updated_at FROM tenants t INNER JOIN api_keys ak ON ak.tenant_id = t.id WHERE ak.key_hash = \$1 AND ak.is_active = true AND t.is_active = true`).
 					WithArgs("hash_valid_key").
 					WillReturnRows(rows)
 			},
 			want: &domain.Tenant{
-				ID:         tenantID,
-				Name:       "Test Tenant",
-				APIKeyHash: "hash_valid_key",
-				Settings:   map[string]interface{}{"key": "value"},
-				IsActive:   true,
-				CreatedAt:  now,
-				UpdatedAt:  now,
+				ID:        tenantID,
+				Name:      "Test Tenant",
+				Slug:      "test-tenant",
+				IsActive:  true,
+				Plan:      "starter",
+				Settings:  map[string]interface{}{"key": "value"},
+				CreatedAt: now,
+				UpdatedAt: now,
 			},
 			wantErr: nil,
 		},
@@ -65,7 +67,7 @@ func TestTenantRepository_GetByAPIKeyHash(t *testing.T) {
 			name:       "tenant not found",
 			apiKeyHash: "hash_nonexistent",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery(`SELECT id, name, api_key_hash, settings, is_active, created_at, updated_at FROM tenants WHERE api_key_hash = \$1 AND is_active = true`).
+				mock.ExpectQuery(`SELECT t.id, t.name, t.slug, t.is_active, t.plan, t.settings, t.created_at, t.updated_at FROM tenants t INNER JOIN api_keys ak ON ak.tenant_id = t.id WHERE ak.key_hash = \$1 AND ak.is_active = true AND t.is_active = true`).
 					WithArgs("hash_nonexistent").
 					WillReturnError(pgx.ErrNoRows)
 			},
@@ -76,7 +78,7 @@ func TestTenantRepository_GetByAPIKeyHash(t *testing.T) {
 			name:       "database error",
 			apiKeyHash: "hash_error",
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery(`SELECT id, name, api_key_hash, settings, is_active, created_at, updated_at FROM tenants WHERE api_key_hash = \$1 AND is_active = true`).
+				mock.ExpectQuery(`SELECT t.id, t.name, t.slug, t.is_active, t.plan, t.settings, t.created_at, t.updated_at FROM tenants t INNER JOIN api_keys ak ON ak.tenant_id = t.id WHERE ak.key_hash = \$1 AND ak.is_active = true AND t.is_active = true`).
 					WithArgs("hash_error").
 					WillReturnError(errors.New("database connection error"))
 			},
@@ -108,7 +110,8 @@ func TestTenantRepository_GetByAPIKeyHash(t *testing.T) {
 				require.NotNil(t, got)
 				assert.Equal(t, tt.want.ID, got.ID)
 				assert.Equal(t, tt.want.Name, got.Name)
-				assert.Equal(t, tt.want.APIKeyHash, got.APIKeyHash)
+				assert.Equal(t, tt.want.Slug, got.Slug)
+				assert.Equal(t, tt.want.Plan, got.Plan)
 				assert.Equal(t, tt.want.IsActive, got.IsActive)
 			}
 
@@ -133,29 +136,31 @@ func TestTenantRepository_GetByID(t *testing.T) {
 			id:   tenantID,
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
 				rows := pgxmock.NewRows([]string{
-					"id", "name", "api_key_hash", "settings", "is_active", "created_at", "updated_at",
+					"id", "name", "slug", "is_active", "plan", "settings", "created_at", "updated_at",
 				}).AddRow(
 					tenantID,
 					"Test Tenant",
-					"hash_abc",
-					map[string]interface{}{"key": "value"},
+					"test-tenant",
 					true,
+					"pro",
+					map[string]interface{}{"key": "value"},
 					now,
 					now,
 				)
 
-				mock.ExpectQuery(`SELECT id, name, api_key_hash, settings, is_active, created_at, updated_at FROM tenants WHERE id = \$1`).
+				mock.ExpectQuery(`SELECT id, name, slug, is_active, plan, settings, created_at, updated_at FROM tenants WHERE id = \$1`).
 					WithArgs(tenantID).
 					WillReturnRows(rows)
 			},
 			want: &domain.Tenant{
-				ID:         tenantID,
-				Name:       "Test Tenant",
-				APIKeyHash: "hash_abc",
-				Settings:   map[string]interface{}{"key": "value"},
-				IsActive:   true,
-				CreatedAt:  now,
-				UpdatedAt:  now,
+				ID:        tenantID,
+				Name:      "Test Tenant",
+				Slug:      "test-tenant",
+				IsActive:  true,
+				Plan:      "pro",
+				Settings:  map[string]interface{}{"key": "value"},
+				CreatedAt: now,
+				UpdatedAt: now,
 			},
 			wantErr: nil,
 		},
@@ -163,7 +168,7 @@ func TestTenantRepository_GetByID(t *testing.T) {
 			name: "tenant not found by id",
 			id:   uuid.New(),
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery(`SELECT id, name, api_key_hash, settings, is_active, created_at, updated_at FROM tenants WHERE id = \$1`).
+				mock.ExpectQuery(`SELECT id, name, slug, is_active, plan, settings, created_at, updated_at FROM tenants WHERE id = \$1`).
 					WithArgs(pgxmock.AnyArg()).
 					WillReturnError(pgx.ErrNoRows)
 			},
@@ -174,7 +179,7 @@ func TestTenantRepository_GetByID(t *testing.T) {
 			name: "database error on get by id",
 			id:   tenantID,
 			mockSetup: func(mock pgxmock.PgxPoolIface) {
-				mock.ExpectQuery(`SELECT id, name, api_key_hash, settings, is_active, created_at, updated_at FROM tenants WHERE id = \$1`).
+				mock.ExpectQuery(`SELECT id, name, slug, is_active, plan, settings, created_at, updated_at FROM tenants WHERE id = \$1`).
 					WithArgs(tenantID).
 					WillReturnError(errors.New("connection lost"))
 			},
@@ -206,7 +211,8 @@ func TestTenantRepository_GetByID(t *testing.T) {
 				require.NotNil(t, got)
 				assert.Equal(t, tt.want.ID, got.ID)
 				assert.Equal(t, tt.want.Name, got.Name)
-				assert.Equal(t, tt.want.APIKeyHash, got.APIKeyHash)
+				assert.Equal(t, tt.want.Slug, got.Slug)
+				assert.Equal(t, tt.want.Plan, got.Plan)
 			}
 
 			assert.NoError(t, mock.ExpectationsWereMet())

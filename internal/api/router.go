@@ -18,6 +18,7 @@ import (
 
 type Dependencies struct {
 	TenantRepo       *repository.TenantRepository
+	APIKeyRepo       *repository.APIKeyRepository
 	FaceRepo         *repository.FaceRepository
 	VerificationRepo *repository.VerificationRepository
 	FaceProvider     provider.FaceProvider
@@ -68,7 +69,12 @@ func (r *Router) Setup() {
 	// Only configure authenticated routes if dependencies were provided
 	if r.deps != nil {
 		// Auth middleware
-		v1.Use(middleware.Auth(r.deps.TenantRepo))
+		authDeps := middleware.AuthDependencies{
+			TenantRepo: r.deps.TenantRepo,
+			APIKeyRepo: r.deps.APIKeyRepo,
+			Logger:     r.logger,
+		}
+		v1.Use(middleware.Auth(authDeps))
 
 		// Face service
 		faceService := service.NewFaceService(

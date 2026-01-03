@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -115,15 +114,4 @@ func (r *FaceRepository) Delete(ctx context.Context, tenantID uuid.UUID, externa
 	}
 
 	return nil
-}
-
-func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	errMsg := strings.ToLower(err.Error())
-	return strings.Contains(errMsg, "23505") ||
-		strings.Contains(errMsg, "unique") ||
-		strings.Contains(errMsg, "duplicate key")
 }

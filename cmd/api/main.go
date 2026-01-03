@@ -56,6 +56,7 @@ func run() error {
 
 	// Create repositories
 	tenantRepo := repository.NewTenantRepository(pool)
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	faceRepo := repository.NewFaceRepository(pool)
 	verificationRepo := repository.NewVerificationRepository(pool)
 
@@ -66,6 +67,7 @@ func run() error {
 	// Setup dependencies
 	deps := &api.Dependencies{
 		TenantRepo:       tenantRepo,
+		APIKeyRepo:       apiKeyRepo,
 		FaceRepo:         faceRepo,
 		VerificationRepo: verificationRepo,
 		FaceProvider:     faceProvider,
