@@ -14,9 +14,10 @@ type Config struct {
 	// Database
 	DatabaseURL string `envconfig:"DATABASE_URL" required:"true"`
 
-	// Provider
-	ProviderType string `envconfig:"PROVIDER_TYPE" default:"deepface"`
+	// Face Recognition Provider
+	FaceProvider string `envconfig:"FACE_PROVIDER" default:"deepface"`
 	DeepFaceURL  string `envconfig:"DEEPFACE_URL" default:"http://localhost:5000"`
+	AWSRegion    string `envconfig:"AWS_REGION" default:"us-east-1"`
 
 	// Security
 	APIKeySecret string `envconfig:"API_KEY_SECRET" required:"true"`

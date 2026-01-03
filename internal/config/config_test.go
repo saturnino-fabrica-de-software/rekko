@@ -43,7 +43,7 @@ func TestLoad(t *testing.T) {
 			check: func(c *Config) bool {
 				return c.Port == 3000 &&
 					c.Environment == envDevelopment &&
-					c.ProviderType == "deepface"
+					c.FaceProvider == "deepface"
 			},
 		},
 		{
