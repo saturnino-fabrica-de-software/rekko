@@ -26,9 +26,10 @@ type Dependencies struct {
 }
 
 type Router struct {
-	app    *fiber.App
-	logger *slog.Logger
-	deps   *Dependencies
+	app         *fiber.App
+	logger      *slog.Logger
+	deps        *Dependencies
+	rateLimiter *middleware.RateLimiter
 }
 
 func NewRouter(logger *slog.Logger, deps *Dependencies) *Router {
@@ -79,8 +80,8 @@ func (r *Router) Setup() {
 		v1.Use(middleware.Auth(authDeps))
 
 		// Rate limiting (per tenant) - must come after auth to have tenant context
-		rateLimiter := middleware.NewRateLimiter(middleware.DefaultRateLimiterConfig())
-		v1.Use(rateLimiter.Handler())
+		r.rateLimiter = middleware.NewRateLimiter(middleware.DefaultRateLimiterConfig())
+		v1.Use(r.rateLimiter.Handler())
 
 		// Face service
 		faceService := service.NewFaceService(
@@ -108,5 +109,9 @@ func (r *Router) Listen(addr string) error {
 }
 
 func (r *Router) Shutdown() error {
+	// Stop rate limiter cleanup goroutine
+	if r.rateLimiter != nil {
+		r.rateLimiter.Stop()
+	}
 	return r.app.Shutdown()
 }

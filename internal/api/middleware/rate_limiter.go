@@ -47,6 +47,7 @@ type RateLimiter struct {
 	config   RateLimiterConfig
 	limiters map[string]*tenantLimiter
 	mu       sync.RWMutex
+	done     chan struct{}
 }
 
 // NewRateLimiter creates a new rate limiter
@@ -64,12 +65,18 @@ func NewRateLimiter(config RateLimiterConfig) *RateLimiter {
 	rl := &RateLimiter{
 		config:   config,
 		limiters: make(map[string]*tenantLimiter),
+		done:     make(chan struct{}),
 	}
 
 	// Start cleanup goroutine
 	go rl.cleanup()
 
 	return rl
+}
+
+// Stop gracefully shuts down the rate limiter cleanup goroutine
+func (rl *RateLimiter) Stop() {
+	close(rl.done)
 }
 
 // Handler returns the Fiber middleware handler
@@ -135,16 +142,21 @@ func (rl *RateLimiter) cleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for key, limiter := range rl.limiters {
-			// Remove entries that haven't been accessed in 2 windows
-			if now.Sub(limiter.lastAccess) > 2*rl.config.Window {
-				delete(rl.limiters, key)
+	for {
+		select {
+		case <-rl.done:
+			return
+		case <-ticker.C:
+			rl.mu.Lock()
+			now := time.Now()
+			for key, limiter := range rl.limiters {
+				// Remove entries that haven't been accessed in 2 windows
+				if now.Sub(limiter.lastAccess) > 2*rl.config.Window {
+					delete(rl.limiters, key)
+				}
 			}
+			rl.mu.Unlock()
 		}
-		rl.mu.Unlock()
 	}
 }
 
