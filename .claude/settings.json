@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '\"\\(.tool_input.command) - \\(.tool_input.description // \"No description\")\"' >> ~/.claude/bash-command-log.txt"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read file_path; if echo \"$file_path\" | grep -qE '\\.go$'; then echo \"[$(date)] gofmt: $file_path\" >> ~/.claude/command-log.txt; gofmt -w \"$file_path\" 2>&1 | tee -a ~/.claude/command-log.txt; fi; }"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read file_path; if echo \"$file_path\" | grep -qE '\\.go$'; then echo \"[$(date)] golangci-lint: $file_path\" >> ~/.claude/command-log.txt; dir=\"$(dirname \"$file_path\")\"; while [ \"$dir\" != \"/\" ] && [ ! -f \"$dir/go.mod\" ]; do dir=\"$(dirname \"$dir\")\"; done; if [ -f \"$dir/go.mod\" ]; then cd \"$dir\" && output=$(golangci-lint run --fix \"$file_path\" 2>&1); exit_code=$?; echo \"$output\" | head -20 | tee -a ~/.claude/command-log.txt; if [ $exit_code -ne 0 ]; then echo \"⚠️ golangci-lint found issues in $file_path:\" >&2; echo \"$output\" | head -20 >&2; fi; fi; fi; }"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path' | { read file_path; if echo \"$file_path\" | grep -qE '\\.go$'; then echo \"[$(date)] go build: $file_path\" >> ~/.claude/command-log.txt; dir=\"$(dirname \"$file_path\")\"; while [ \"$dir\" != \"/\" ] && [ ! -f \"$dir/go.mod\" ]; do dir=\"$(dirname \"$dir\")\"; done; if [ -f \"$dir/go.mod\" ]; then cd \"$dir\" && output=$(go build ./... 2>&1); exit_code=$?; echo \"$output\" | head -20 | tee -a ~/.claude/command-log.txt; if [ $exit_code -ne 0 ]; then echo \"⚠️ go build failed:\" >&2; echo \"$output\" | head -20 >&2; fi; fi; fi; }"
+          }
+        ]
+      }
+    ]
+  }
+}

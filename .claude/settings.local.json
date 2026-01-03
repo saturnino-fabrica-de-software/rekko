@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue view:*)",
+      "Bash(find:*)",
+      "Bash(gh label create:*)",
+      "Bash(gh issue create:*)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(gh issue comment:*)",
+      "Bash(cat:*)",
+      "Bash(go get:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker info:*)",
+      "Bash(tree:*)",
+      "Bash(chmod:*)",
+      "Bash(ls:*)",
+      "Bash(make help:*)",
+      "Bash(gh issue list:*)",
+      "Bash(mkdir:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go test:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(go build:*)",
+      "Bash(wc:*)"
+    ]
+  }
+}
