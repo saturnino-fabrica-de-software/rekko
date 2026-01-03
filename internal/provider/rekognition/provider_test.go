@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/rekognition"
 	"github.com/aws/aws-sdk-go-v2/service/rekognition/types"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -568,4 +569,649 @@ func TestIntegration_NewProvider(t *testing.T) {
 // ptr is a helper function to get pointer to a value
 func ptr[T any](v T) *T {
 	return &v
+}
+
+// fakeImageData returns fake image data with minimum valid size
+func fakeImageData() []byte {
+	// Create 150 bytes of fake image data (above minimum of 100)
+	data := make([]byte, 150)
+	for i := range data {
+		data[i] = byte(i % 256)
+	}
+	return data
+}
+
+// TestDetectFaces_Success verifies successful face detection
+func TestDetectFaces_Success(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		detectFacesFunc: func(ctx context.Context, params *rekognition.DetectFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DetectFacesOutput, error) {
+			return &rekognition.DetectFacesOutput{
+				FaceDetails: []types.FaceDetail{
+					{
+						BoundingBox: &types.BoundingBox{
+							Left:   ptr(float32(0.1)),
+							Top:    ptr(float32(0.2)),
+							Width:  ptr(float32(0.3)),
+							Height: ptr(float32(0.4)),
+						},
+						Confidence: ptr(float32(99.5)),
+						Quality: &types.ImageQuality{
+							Brightness: ptr(float32(80.0)),
+							Sharpness:  ptr(float32(90.0)),
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	faces, err := provider.DetectFaces(context.Background(), fakeImageData())
+
+	require.NoError(t, err)
+	require.Len(t, faces, 1)
+	assert.InDelta(t, 0.1, faces[0].BoundingBox.X, 0.01)
+	assert.InDelta(t, 0.2, faces[0].BoundingBox.Y, 0.01)
+	assert.InDelta(t, 0.3, faces[0].BoundingBox.Width, 0.01)
+	assert.InDelta(t, 0.4, faces[0].BoundingBox.Height, 0.01)
+	assert.InDelta(t, 99.5, faces[0].Confidence, 0.1)
+	assert.Greater(t, faces[0].QualityScore, 0.0)
+}
+
+// TestDetectFaces_NoFaces verifies handling of images with no faces
+func TestDetectFaces_NoFaces(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		detectFacesFunc: func(ctx context.Context, params *rekognition.DetectFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DetectFacesOutput, error) {
+			return &rekognition.DetectFacesOutput{
+				FaceDetails: []types.FaceDetail{},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	faces, err := provider.DetectFaces(context.Background(), fakeImageData())
+
+	require.NoError(t, err)
+	assert.Empty(t, faces)
+}
+
+// TestDetectFaces_Error verifies error handling in face detection
+func TestDetectFaces_Error(t *testing.T) {
+	expectedErr := assert.AnError
+	mock := &mockRekognitionAPI{
+		detectFacesFunc: func(ctx context.Context, params *rekognition.DetectFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DetectFacesOutput, error) {
+			return nil, expectedErr
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	tenantID := uuid.New()
+	provider := &Provider{client: client, tenantID: tenantID}
+
+	faces, err := provider.DetectFaces(context.Background(), []byte("invalid-image"))
+
+	require.Error(t, err)
+	assert.Nil(t, faces)
+	assert.Contains(t, err.Error(), tenantID.String())
+}
+
+// TestDetectFaces_MultipleFaces verifies detection of multiple faces
+func TestDetectFaces_MultipleFaces(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		detectFacesFunc: func(ctx context.Context, params *rekognition.DetectFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DetectFacesOutput, error) {
+			return &rekognition.DetectFacesOutput{
+				FaceDetails: []types.FaceDetail{
+					{
+						BoundingBox: &types.BoundingBox{
+							Left:   ptr(float32(0.1)),
+							Top:    ptr(float32(0.1)),
+							Width:  ptr(float32(0.2)),
+							Height: ptr(float32(0.2)),
+						},
+						Confidence: ptr(float32(95.0)),
+						Quality: &types.ImageQuality{
+							Brightness: ptr(float32(80.0)),
+							Sharpness:  ptr(float32(90.0)),
+						},
+					},
+					{
+						BoundingBox: &types.BoundingBox{
+							Left:   ptr(float32(0.5)),
+							Top:    ptr(float32(0.5)),
+							Width:  ptr(float32(0.2)),
+							Height: ptr(float32(0.2)),
+						},
+						Confidence: ptr(float32(96.0)),
+						Quality: &types.ImageQuality{
+							Brightness: ptr(float32(85.0)),
+							Sharpness:  ptr(float32(92.0)),
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	faces, err := provider.DetectFaces(context.Background(), fakeImageData())
+
+	require.NoError(t, err)
+	assert.Len(t, faces, 2)
+}
+
+// TestIndexFace_Success verifies successful face indexing
+func TestIndexFace_Success(t *testing.T) {
+	expectedFaceID := "face-12345678-1234-1234-1234-123456789012"
+	mock := &mockRekognitionAPI{
+		indexFacesFunc: func(ctx context.Context, params *rekognition.IndexFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.IndexFacesOutput, error) {
+			return &rekognition.IndexFacesOutput{
+				FaceRecords: []types.FaceRecord{
+					{
+						Face: &types.Face{
+							FaceId: ptr(expectedFaceID),
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	faceID, embedding, err := provider.IndexFace(context.Background(), fakeImageData())
+
+	require.NoError(t, err)
+	assert.Equal(t, expectedFaceID, faceID)
+	assert.Nil(t, embedding) // Rekognition does not expose embeddings
+}
+
+// TestIndexFace_NoFace verifies handling when no face is detected during indexing
+func TestIndexFace_NoFace(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		indexFacesFunc: func(ctx context.Context, params *rekognition.IndexFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.IndexFacesOutput, error) {
+			return &rekognition.IndexFacesOutput{
+				FaceRecords:    []types.FaceRecord{},
+				UnindexedFaces: []types.UnindexedFace{},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	tenantID := uuid.New()
+	provider := &Provider{client: client, tenantID: tenantID}
+
+	faceID, embedding, err := provider.IndexFace(context.Background(), fakeImageData())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrNoFaceDetected)
+	assert.Empty(t, faceID)
+	assert.Nil(t, embedding)
+	assert.Contains(t, err.Error(), tenantID.String())
+}
+
+// TestIndexFace_MultipleFaces verifies error when multiple faces are detected
+func TestIndexFace_MultipleFaces(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		indexFacesFunc: func(ctx context.Context, params *rekognition.IndexFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.IndexFacesOutput, error) {
+			return &rekognition.IndexFacesOutput{
+				FaceRecords: []types.FaceRecord{},
+				UnindexedFaces: []types.UnindexedFace{
+					{
+						Reasons: []types.Reason{types.ReasonExceedsMaxFaces},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	faceID, embedding, err := provider.IndexFace(context.Background(), fakeImageData())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrMultipleFaces)
+	assert.Empty(t, faceID)
+	assert.Nil(t, embedding)
+}
+
+// TestIndexFace_LowQuality verifies handling of low quality images
+func TestIndexFace_LowQuality(t *testing.T) {
+	tests := []struct {
+		name   string
+		reason types.Reason
+	}{
+		{name: "extreme pose", reason: types.ReasonExtremePose},
+		{name: "low brightness", reason: types.ReasonLowBrightness},
+		{name: "low sharpness", reason: types.ReasonLowSharpness},
+		{name: "low confidence", reason: types.ReasonLowConfidence},
+		{name: "small bounding box", reason: types.ReasonSmallBoundingBox},
+		{name: "low face quality", reason: types.ReasonLowFaceQuality},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockRekognitionAPI{
+				indexFacesFunc: func(ctx context.Context, params *rekognition.IndexFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.IndexFacesOutput, error) {
+					return &rekognition.IndexFacesOutput{
+						FaceRecords: []types.FaceRecord{},
+						UnindexedFaces: []types.UnindexedFace{
+							{
+								Reasons: []types.Reason{tt.reason},
+							},
+						},
+					}, nil
+				},
+			}
+
+			client := &Client{rekognition: mock, config: DefaultConfig()}
+			provider := &Provider{client: client, tenantID: uuid.New()}
+
+			faceID, embedding, err := provider.IndexFace(context.Background(), fakeImageData())
+
+			require.Error(t, err)
+			assert.ErrorIs(t, err, ErrNoFaceDetected)
+			assert.Empty(t, faceID)
+			assert.Nil(t, embedding)
+		})
+	}
+}
+
+// TestIndexFace_Error verifies error handling during indexing
+func TestIndexFace_Error(t *testing.T) {
+	expectedErr := assert.AnError
+	mock := &mockRekognitionAPI{
+		indexFacesFunc: func(ctx context.Context, params *rekognition.IndexFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.IndexFacesOutput, error) {
+			return nil, expectedErr
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	tenantID := uuid.New()
+	provider := &Provider{client: client, tenantID: tenantID}
+
+	faceID, embedding, err := provider.IndexFace(context.Background(), []byte("invalid-image"))
+
+	require.Error(t, err)
+	assert.Empty(t, faceID)
+	assert.Nil(t, embedding)
+	assert.Contains(t, err.Error(), tenantID.String())
+}
+
+// TestDeleteFace_Success verifies successful face deletion
+func TestDeleteFace_Success(t *testing.T) {
+	faceIDToDelete := "face-to-delete"
+	mock := &mockRekognitionAPI{
+		deleteFacesFunc: func(ctx context.Context, params *rekognition.DeleteFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DeleteFacesOutput, error) {
+			assert.Contains(t, params.FaceIds, faceIDToDelete)
+			return &rekognition.DeleteFacesOutput{
+				DeletedFaces: []string{faceIDToDelete},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	err := provider.DeleteFace(context.Background(), faceIDToDelete)
+
+	require.NoError(t, err)
+}
+
+// TestDeleteFace_NotFound verifies error when face is not found
+func TestDeleteFace_NotFound(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		deleteFacesFunc: func(ctx context.Context, params *rekognition.DeleteFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DeleteFacesOutput, error) {
+			return &rekognition.DeleteFacesOutput{
+				DeletedFaces: []string{}, // No faces deleted
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	tenantID := uuid.New()
+	provider := &Provider{client: client, tenantID: tenantID}
+
+	err := provider.DeleteFace(context.Background(), "non-existent-face")
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrFaceNotFound)
+	assert.Contains(t, err.Error(), tenantID.String())
+}
+
+// TestDeleteFace_Error verifies error handling during deletion
+func TestDeleteFace_Error(t *testing.T) {
+	expectedErr := assert.AnError
+	mock := &mockRekognitionAPI{
+		deleteFacesFunc: func(ctx context.Context, params *rekognition.DeleteFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DeleteFacesOutput, error) {
+			return nil, expectedErr
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	tenantID := uuid.New()
+	provider := &Provider{client: client, tenantID: tenantID}
+
+	err := provider.DeleteFace(context.Background(), "some-face")
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), tenantID.String())
+}
+
+// TestSearchFacesByImage_Success verifies successful face search
+func TestSearchFacesByImage_Success(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		searchFacesByImageFunc: func(ctx context.Context, params *rekognition.SearchFacesByImageInput, optFns ...func(*rekognition.Options)) (*rekognition.SearchFacesByImageOutput, error) {
+			return &rekognition.SearchFacesByImageOutput{
+				FaceMatches: []types.FaceMatch{
+					{
+						Face: &types.Face{
+							FaceId:          ptr("face-1"),
+							ExternalImageId: ptr("external-1"),
+						},
+						Similarity: ptr(float32(95.5)),
+					},
+					{
+						Face: &types.Face{
+							FaceId:          ptr("face-2"),
+							ExternalImageId: nil,
+						},
+						Similarity: ptr(float32(88.2)),
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	results, err := provider.SearchFacesByImage(context.Background(), fakeImageData(), 10, 0.8)
+
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	assert.Equal(t, "face-1", results[0].FaceID)
+	assert.Equal(t, "external-1", results[0].ExternalImageID)
+	assert.InDelta(t, 0.955, results[0].Similarity, 0.001)
+	assert.Equal(t, "face-2", results[1].FaceID)
+	assert.Empty(t, results[1].ExternalImageID)
+	assert.InDelta(t, 0.882, results[1].Similarity, 0.001)
+}
+
+// TestSearchFacesByImage_NoMatches verifies handling when no matches are found
+func TestSearchFacesByImage_NoMatches(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		searchFacesByImageFunc: func(ctx context.Context, params *rekognition.SearchFacesByImageInput, optFns ...func(*rekognition.Options)) (*rekognition.SearchFacesByImageOutput, error) {
+			return &rekognition.SearchFacesByImageOutput{
+				FaceMatches: []types.FaceMatch{},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	results, err := provider.SearchFacesByImage(context.Background(), fakeImageData(), 10, 0.9)
+
+	require.NoError(t, err)
+	assert.Empty(t, results)
+}
+
+// TestSearchFacesByImage_InvalidMaxFaces verifies validation of maxFaces parameter
+func TestSearchFacesByImage_InvalidMaxFaces(t *testing.T) {
+	tests := []struct {
+		name     string
+		maxFaces int
+		wantErr  bool
+	}{
+		{name: "negative maxFaces", maxFaces: -1, wantErr: true},
+		{name: "zero maxFaces", maxFaces: 0, wantErr: false},
+		{name: "valid maxFaces", maxFaces: 10, wantErr: false},
+		{name: "max allowed", maxFaces: 4096, wantErr: false},
+		{name: "exceeds max", maxFaces: 4097, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockRekognitionAPI{
+				searchFacesByImageFunc: func(ctx context.Context, params *rekognition.SearchFacesByImageInput, optFns ...func(*rekognition.Options)) (*rekognition.SearchFacesByImageOutput, error) {
+					return &rekognition.SearchFacesByImageOutput{
+						FaceMatches: []types.FaceMatch{},
+					}, nil
+				},
+			}
+
+			client := &Client{rekognition: mock, config: DefaultConfig()}
+			tenantID := uuid.New()
+			provider := &Provider{client: client, tenantID: tenantID}
+
+			results, err := provider.SearchFacesByImage(context.Background(), fakeImageData(), tt.maxFaces, 0.8)
+
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tenantID.String())
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, results)
+			}
+		})
+	}
+}
+
+// TestSearchFacesByImage_Error verifies error handling during search
+func TestSearchFacesByImage_Error(t *testing.T) {
+	expectedErr := assert.AnError
+	mock := &mockRekognitionAPI{
+		searchFacesByImageFunc: func(ctx context.Context, params *rekognition.SearchFacesByImageInput, optFns ...func(*rekognition.Options)) (*rekognition.SearchFacesByImageOutput, error) {
+			return nil, expectedErr
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	tenantID := uuid.New()
+	provider := &Provider{client: client, tenantID: tenantID}
+
+	results, err := provider.SearchFacesByImage(context.Background(), fakeImageData(), 10, 0.8)
+
+	require.Error(t, err)
+	assert.Nil(t, results)
+	assert.Contains(t, err.Error(), tenantID.String())
+}
+
+// TestCompareFaceImages_Success verifies successful face comparison
+func TestCompareFaceImages_Success(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		compareFacesFunc: func(ctx context.Context, params *rekognition.CompareFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.CompareFacesOutput, error) {
+			return &rekognition.CompareFacesOutput{
+				FaceMatches: []types.CompareFacesMatch{
+					{
+						Similarity: ptr(float32(92.5)),
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	similarity, err := provider.CompareFaceImages(context.Background(), fakeImageData(), fakeImageData(), 0.8)
+
+	require.NoError(t, err)
+	assert.InDelta(t, 0.925, similarity, 0.001)
+}
+
+// TestCompareFaceImages_NoMatch verifies handling when faces don't match
+func TestCompareFaceImages_NoMatch(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		compareFacesFunc: func(ctx context.Context, params *rekognition.CompareFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.CompareFacesOutput, error) {
+			return &rekognition.CompareFacesOutput{
+				FaceMatches: []types.CompareFacesMatch{},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	similarity, err := provider.CompareFaceImages(context.Background(), fakeImageData(), fakeImageData(), 0.9)
+
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, similarity)
+}
+
+// TestCompareFaceImages_Error verifies error handling during comparison
+func TestCompareFaceImages_Error(t *testing.T) {
+	expectedErr := assert.AnError
+	mock := &mockRekognitionAPI{
+		compareFacesFunc: func(ctx context.Context, params *rekognition.CompareFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.CompareFacesOutput, error) {
+			return nil, expectedErr
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	tenantID := uuid.New()
+	provider := &Provider{client: client, tenantID: tenantID}
+
+	similarity, err := provider.CompareFaceImages(context.Background(), fakeImageData(), fakeImageData(), 0.8)
+
+	require.Error(t, err)
+	assert.Equal(t, 0.0, similarity)
+	assert.Contains(t, err.Error(), tenantID.String())
+}
+
+// TestGetFaceCount_Success verifies successful retrieval of face count
+func TestGetFaceCount_Success(t *testing.T) {
+	expectedCount := int64(42)
+	mock := &mockRekognitionAPI{
+		describeCollectionFunc: func(ctx context.Context, params *rekognition.DescribeCollectionInput, optFns ...func(*rekognition.Options)) (*rekognition.DescribeCollectionOutput, error) {
+			return &rekognition.DescribeCollectionOutput{
+				FaceCount: ptr(expectedCount),
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	count, err := provider.GetFaceCount(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, expectedCount, count)
+}
+
+// TestCreateCollection_Success verifies successful collection creation
+func TestCreateCollection_Success(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		createCollectionFunc: func(ctx context.Context, params *rekognition.CreateCollectionInput, optFns ...func(*rekognition.Options)) (*rekognition.CreateCollectionOutput, error) {
+			return &rekognition.CreateCollectionOutput{}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	err := provider.CreateCollection(context.Background())
+
+	require.NoError(t, err)
+}
+
+// TestDeleteCollection_Success verifies successful collection deletion
+func TestDeleteCollection_Success(t *testing.T) {
+	mock := &mockRekognitionAPI{
+		deleteCollectionFunc: func(ctx context.Context, params *rekognition.DeleteCollectionInput, optFns ...func(*rekognition.Options)) (*rekognition.DeleteCollectionOutput, error) {
+			return &rekognition.DeleteCollectionOutput{}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	err := provider.DeleteCollection(context.Background())
+
+	require.NoError(t, err)
+}
+
+// TestIndexFace_Success_FullFlow verifies complete face indexing workflow
+func TestIndexFace_Success_FullFlow(t *testing.T) {
+	expectedFaceID := "aws-face-id-123"
+	indexCalled := false
+
+	mock := &mockRekognitionAPI{
+		indexFacesFunc: func(ctx context.Context, params *rekognition.IndexFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.IndexFacesOutput, error) {
+			indexCalled = true
+			assert.NotNil(t, params.CollectionId)
+			assert.NotNil(t, params.Image)
+			assert.Equal(t, int32(1), *params.MaxFaces)
+			return &rekognition.IndexFacesOutput{
+				FaceRecords: []types.FaceRecord{
+					{
+						Face: &types.Face{
+							FaceId: ptr(expectedFaceID),
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	faceID, embedding, err := provider.IndexFace(context.Background(), fakeImageData())
+
+	require.NoError(t, err)
+	assert.Equal(t, expectedFaceID, faceID)
+	assert.Nil(t, embedding)
+	assert.True(t, indexCalled, "IndexFaces should have been called")
+}
+
+// TestValidateImage_EmptyImage verifies validation of empty images
+func TestValidateImage_EmptyImage(t *testing.T) {
+	mock := &mockRekognitionAPI{}
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	_, err := provider.DetectFaces(context.Background(), []byte{})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidImage)
+}
+
+// TestValidateImage_TooSmall verifies validation of images that are too small
+func TestValidateImage_TooSmall(t *testing.T) {
+	mock := &mockRekognitionAPI{}
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	smallImage := make([]byte, 50) // Less than minImageSize (100)
+
+	_, err := provider.DetectFaces(context.Background(), smallImage)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidImage)
+	assert.Contains(t, err.Error(), "too small")
+}
+
+// TestValidateImage_TooLarge verifies validation of images that are too large
+func TestValidateImage_TooLarge(t *testing.T) {
+	mock := &mockRekognitionAPI{}
+	client := &Client{rekognition: mock, config: DefaultConfig()}
+	provider := &Provider{client: client, tenantID: uuid.New()}
+
+	// Create image larger than maxImageSize (5MB = 5 * 1024 * 1024)
+	largeImage := make([]byte, 6*1024*1024)
+
+	_, err := provider.DetectFaces(context.Background(), largeImage)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidImage)
+	assert.Contains(t, err.Error(), "too large")
 }

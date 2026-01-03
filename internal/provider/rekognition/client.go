@@ -19,9 +19,22 @@ const (
 	errCodeInvalidParameter = "InvalidParameterException"
 )
 
+// RekognitionAPI defines the AWS Rekognition operations used by the provider
+type RekognitionAPI interface {
+	DetectFaces(ctx context.Context, params *rekognition.DetectFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DetectFacesOutput, error)
+	IndexFaces(ctx context.Context, params *rekognition.IndexFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.IndexFacesOutput, error)
+	DeleteFaces(ctx context.Context, params *rekognition.DeleteFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.DeleteFacesOutput, error)
+	CompareFaces(ctx context.Context, params *rekognition.CompareFacesInput, optFns ...func(*rekognition.Options)) (*rekognition.CompareFacesOutput, error)
+	SearchFacesByImage(ctx context.Context, params *rekognition.SearchFacesByImageInput, optFns ...func(*rekognition.Options)) (*rekognition.SearchFacesByImageOutput, error)
+	CreateCollection(ctx context.Context, params *rekognition.CreateCollectionInput, optFns ...func(*rekognition.Options)) (*rekognition.CreateCollectionOutput, error)
+	DeleteCollection(ctx context.Context, params *rekognition.DeleteCollectionInput, optFns ...func(*rekognition.Options)) (*rekognition.DeleteCollectionOutput, error)
+	DescribeCollection(ctx context.Context, params *rekognition.DescribeCollectionInput, optFns ...func(*rekognition.Options)) (*rekognition.DescribeCollectionOutput, error)
+	ListCollections(ctx context.Context, params *rekognition.ListCollectionsInput, optFns ...func(*rekognition.Options)) (*rekognition.ListCollectionsOutput, error)
+}
+
 // Client wraps the AWS Rekognition client and provides collection management operations
 type Client struct {
-	rekognition *rekognition.Client
+	rekognition RekognitionAPI
 	config      Config
 }
 
