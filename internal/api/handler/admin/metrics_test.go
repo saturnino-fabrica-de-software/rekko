@@ -46,9 +46,13 @@ func setupTestApp(handler fiber.Handler, tenantID uuid.UUID) *fiber.App {
 // readResponseBody reads and unmarshals response body
 func readResponseBody(t *testing.T, resp *http.Response, v interface{}) {
 	t.Helper()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			t.Logf("failed to close response body: %v", err)
+		}
+	}()
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
-	defer resp.Body.Close()
 
 	err = json.Unmarshal(body, v)
 	require.NoError(t, err)
