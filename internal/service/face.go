@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -250,8 +251,15 @@ func (s *FaceService) Search(ctx context.Context, tenant *domain.Tenant, imageBy
 	latencyMs := time.Since(start).Milliseconds()
 	searchID := uuid.New()
 
-	// 10. Create audit log (async, best-effort)
-	go s.createSearchAudit(tenant.ID, searchID, matches, threshold, maxResults, latencyMs, clientIP)
+	// 10. Create audit log (async, best-effort with panic recovery)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("panic in search audit", "panic", r, "tenant_id", tenant.ID, "search_id", searchID)
+			}
+		}()
+		s.createSearchAudit(tenant.ID, searchID, matches, threshold, maxResults, latencyMs, clientIP)
+	}()
 
 	// 11. Return result
 	return &domain.SearchResult{
