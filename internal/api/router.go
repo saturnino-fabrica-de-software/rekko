@@ -36,13 +36,14 @@ type Dependencies struct {
 }
 
 type Router struct {
-	app            *fiber.App
-	logger         *slog.Logger
-	deps           *Dependencies
-	rateLimiter    *middleware.RateLimiter
-	wsHub          *ws.Hub
-	webhookWorker  *webhook.Worker
-	cancelWorker   context.CancelFunc
+	app           *fiber.App
+	logger        *slog.Logger
+	deps          *Dependencies
+	rateLimiter   *middleware.RateLimiter
+	wsHub         *ws.Hub
+	webhookWorker *webhook.Worker
+	cancelWorker  context.CancelFunc
+	cancelHub     context.CancelFunc
 }
 
 func NewRouter(logger *slog.Logger, deps *Dependencies) *Router {
@@ -85,12 +86,14 @@ func (r *Router) Setup() {
 	if r.deps != nil {
 		// Initialize WebSocket Hub
 		r.wsHub = ws.NewHub()
-		go r.wsHub.Run()
+		hubCtx, hubCancel := context.WithCancel(context.Background())
+		r.cancelHub = hubCancel
+		go r.wsHub.Run(hubCtx)
 
 		// Initialize Webhook Service and Worker
 		webhookService := webhook.NewService(r.deps.DB)
 		r.webhookWorker = webhook.NewWorker(r.deps.DB, webhookService, r.logger)
-		
+
 		ctx, cancel := context.WithCancel(context.Background())
 		r.cancelWorker = cancel
 		go r.webhookWorker.Run(ctx)
@@ -219,15 +222,20 @@ func (r *Router) Listen(addr string) error {
 }
 
 func (r *Router) Shutdown() error {
+	// Stop WebSocket hub
+	if r.cancelHub != nil {
+		r.cancelHub()
+	}
+
 	// Stop webhook worker
 	if r.cancelWorker != nil {
 		r.cancelWorker()
 	}
-	
+
 	// Stop rate limiter cleanup goroutine
 	if r.rateLimiter != nil {
 		r.rateLimiter.Stop()
 	}
-	
+
 	return r.app.Shutdown()
 }

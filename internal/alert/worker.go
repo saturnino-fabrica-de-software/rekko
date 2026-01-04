@@ -35,6 +35,7 @@ func NewWorker(repo *Repository, engine *Engine, notifier *Notifier, logger *slo
 func (w *Worker) Start(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
+	defer close(w.done)
 
 	w.logger.Info("alert worker started", "interval", w.interval)
 
@@ -42,7 +43,6 @@ func (w *Worker) Start(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			w.logger.Info("alert worker stopped")
-			close(w.done)
 			return
 		case <-w.done:
 			w.logger.Info("alert worker stopped")

@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -22,7 +23,9 @@ func TestNewHub(t *testing.T) {
 
 func TestHub_AddAndRemoveClient(t *testing.T) {
 	hub := NewHub()
-	go hub.Run()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
 
 	tenantID := uuid.New()
 	client := &Client{
@@ -44,7 +47,9 @@ func TestHub_AddAndRemoveClient(t *testing.T) {
 
 func TestHub_BroadcastToTenant(t *testing.T) {
 	hub := NewHub()
-	go hub.Run()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
 
 	tenantID := uuid.New()
 	client := &Client{
@@ -74,7 +79,9 @@ func TestHub_BroadcastToTenant(t *testing.T) {
 
 func TestHub_TenantIsolation(t *testing.T) {
 	hub := NewHub()
-	go hub.Run()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go hub.Run(ctx)
 
 	tenant1 := uuid.New()
 	tenant2 := uuid.New()

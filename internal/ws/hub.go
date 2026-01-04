@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"encoding/json"
 	"sync"
 	"time"
@@ -27,9 +28,11 @@ func NewHub() *Hub {
 	}
 }
 
-func (h *Hub) Run() {
+func (h *Hub) Run(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case client := <-h.register:
 			h.addClient(client)
 		case client := <-h.unregister:
@@ -70,25 +73,28 @@ func (h *Hub) removeClient(client *Client) {
 
 func (h *Hub) broadcastToTenant(event Event) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	clients := h.tenants[event.TenantID]
-	if clients == nil {
+	clients, ok := h.tenants[event.TenantID]
+	if !ok {
+		h.mu.RUnlock()
 		return
 	}
+
+	clientList := make([]*Client, 0, len(clients))
+	for client := range clients {
+		clientList = append(clientList, client)
+	}
+	h.mu.RUnlock()
 
 	message, err := json.Marshal(event)
 	if err != nil {
 		return
 	}
 
-	for client := range clients {
+	for _, client := range clientList {
 		select {
 		case client.send <- message:
 		default:
-			close(client.send)
-			delete(h.clients, client)
-			delete(h.tenants[event.TenantID], client)
+			h.unregister <- client
 		}
 	}
 }
