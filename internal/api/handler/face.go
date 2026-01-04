@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -32,14 +34,41 @@ type FaceService interface {
 	CheckLiveness(ctx context.Context, imageBytes []byte, threshold float64) (*domain.LivenessResult, error)
 }
 
+// UsageTracker interface for tracking usage metrics
+type UsageTracker interface {
+	IncrementDaily(ctx context.Context, tenantID uuid.UUID, date time.Time, field string, amount int) error
+}
+
 // FaceHandler handles face-related requests
 type FaceHandler struct {
-	service FaceService
+	service      FaceService
+	usageTracker UsageTracker
+	logger       *slog.Logger
 }
 
 // NewFaceHandler creates a new FaceHandler instance
-func NewFaceHandler(service FaceService) *FaceHandler {
-	return &FaceHandler{service: service}
+func NewFaceHandler(service FaceService, usageTracker UsageTracker, logger *slog.Logger) *FaceHandler {
+	return &FaceHandler{
+		service:      service,
+		usageTracker: usageTracker,
+		logger:       logger,
+	}
+}
+
+// trackUsage increments usage counter asynchronously (best-effort)
+func (h *FaceHandler) trackUsage(tenantID uuid.UUID, field string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := h.usageTracker.IncrementDaily(ctx, tenantID, time.Now().UTC(), field, 1); err != nil {
+			h.logger.Warn("failed to track usage",
+				"error", err,
+				"tenant_id", tenantID,
+				"field", field,
+			)
+		}
+	}()
 }
 
 // RegisterResponse response for register endpoint
@@ -103,7 +132,10 @@ func (h *FaceHandler) Register(c *fiber.Ctx) error {
 		return err
 	}
 
-	// 6. Return response
+	// 6. Track usage (async, best-effort)
+	h.trackUsage(tenant.ID, "registrations")
+
+	// 7. Return response
 	return c.Status(fiber.StatusCreated).JSON(RegisterResponse{
 		FaceID:       face.ID.String(),
 		ExternalID:   face.ExternalID,
@@ -138,7 +170,10 @@ func (h *FaceHandler) Verify(c *fiber.Ctx) error {
 		return err
 	}
 
-	// 5. Return response
+	// 5. Track usage (async, best-effort)
+	h.trackUsage(tenantID, "verifications")
+
+	// 6. Return response
 	return c.JSON(VerifyResponse{
 		Verified:       verification.Verified,
 		Confidence:     verification.Confidence,
@@ -193,7 +228,10 @@ func (h *FaceHandler) CheckLiveness(c *fiber.Ctx) error {
 		return err
 	}
 
-	// 5. Return response
+	// 5. Track usage (async, best-effort)
+	h.trackUsage(tenant.ID, "liveness_checks")
+
+	// 6. Return response
 	return c.JSON(LivenessResponse{
 		IsLive:     result.IsLive,
 		Confidence: result.Confidence,

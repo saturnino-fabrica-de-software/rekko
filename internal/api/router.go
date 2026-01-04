@@ -38,14 +38,15 @@ type Dependencies struct {
 }
 
 type Router struct {
-	app           *fiber.App
-	logger        *slog.Logger
-	deps          *Dependencies
-	rateLimiter   *middleware.RateLimiter
-	wsHub         *ws.Hub
-	webhookWorker *webhook.Worker
-	cancelWorker  context.CancelFunc
-	cancelHub     context.CancelFunc
+	app               *fiber.App
+	logger            *slog.Logger
+	deps              *Dependencies
+	rateLimiter       *middleware.RateLimiter
+	wsHub             *ws.Hub
+	webhookWorker     *webhook.Worker
+	cancelWorker      context.CancelFunc
+	cancelHub         context.CancelFunc
+	cancelUsageWorker context.CancelFunc
 }
 
 func NewRouter(logger *slog.Logger, deps *Dependencies) *Router {
@@ -113,6 +114,9 @@ func (r *Router) Setup() {
 		r.rateLimiter = middleware.NewRateLimiter(middleware.DefaultRateLimiterConfig())
 		v1.Use(r.rateLimiter.Handler())
 
+		// Usage repository (needed for both FaceHandler and UsageService)
+		usageRepo := usage.NewRepository(r.deps.DB)
+
 		// Face service
 		faceService := service.NewFaceService(
 			r.deps.FaceRepo,
@@ -120,8 +124,8 @@ func (r *Router) Setup() {
 			r.deps.FaceProvider,
 		)
 
-		// Face handler
-		faceHandler := handler.NewFaceHandler(faceService)
+		// Face handler with usage tracking
+		faceHandler := handler.NewFaceHandler(faceService, usageRepo, r.logger)
 
 		// Face routes
 		v1.Post("/faces", faceHandler.Register)
@@ -132,7 +136,6 @@ func (r *Router) Setup() {
 		// Usage service
 		pgCache := cache.NewPGCache(r.deps.DB)
 		cacheAdapter := usage.NewCacheAdapter(pgCache)
-		usageRepo := usage.NewRepository(r.deps.DB)
 		usageService := usage.NewService(usageRepo, webhookService, cacheAdapter, r.logger)
 
 		// Usage handler
@@ -140,6 +143,12 @@ func (r *Router) Setup() {
 
 		// Usage routes
 		v1.Get("/usage", usageHandler.GetUsage)
+
+		// Start usage quota check worker (every 5 minutes)
+		usageWorker := usage.NewWorker(usageService, usageRepo, r.logger, 5*time.Minute)
+		usageWorkerCtx, usageWorkerCancel := context.WithCancel(context.Background())
+		r.cancelUsageWorker = usageWorkerCancel
+		go usageWorker.Run(usageWorkerCtx)
 
 		// WebSocket endpoint
 		v1.Get("/ws", ws.UpgradeMiddleware(), ws.Handler(r.wsHub))
@@ -245,6 +254,11 @@ func (r *Router) Shutdown() error {
 	// Stop webhook worker
 	if r.cancelWorker != nil {
 		r.cancelWorker()
+	}
+
+	// Stop usage quota check worker
+	if r.cancelUsageWorker != nil {
+		r.cancelUsageWorker()
 	}
 
 	// Stop rate limiter cleanup goroutine

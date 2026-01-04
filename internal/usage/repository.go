@@ -183,3 +183,33 @@ func (r *Repository) IncrementDaily(ctx context.Context, tenantID uuid.UUID, dat
 
 	return nil
 }
+
+// GetActiveTenantsWithPlan returns all active tenants with their plan IDs for quota checking
+func (r *Repository) GetActiveTenantsWithPlan(ctx context.Context) ([]TenantPlan, error) {
+	query := `
+		SELECT t.id, COALESCE(t.plan_id, 'starter') as plan_id
+		FROM tenants t
+		WHERE t.is_active = true
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("get active tenants: %w", err)
+	}
+	defer rows.Close()
+
+	var tenants []TenantPlan
+	for rows.Next() {
+		var tp TenantPlan
+		if err := rows.Scan(&tp.TenantID, &tp.PlanID); err != nil {
+			return nil, fmt.Errorf("scan tenant plan: %w", err)
+		}
+		tenants = append(tenants, tp)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate tenants: %w", err)
+	}
+
+	return tenants, nil
+}

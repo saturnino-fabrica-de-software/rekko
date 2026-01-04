@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http/httptest"
 	"net/textproto"
@@ -53,6 +54,21 @@ func (m *MockFaceService) CheckLiveness(ctx context.Context, imageBytes []byte, 
 		return nil, args.Error(1)
 	}
 	return args.Get(0).(*domain.LivenessResult), args.Error(1)
+}
+
+// MockUsageTracker is a mock implementation of UsageTracker
+type MockUsageTracker struct {
+	mock.Mock
+}
+
+func (m *MockUsageTracker) IncrementDaily(ctx context.Context, tenantID uuid.UUID, date time.Time, field string, amount int) error {
+	args := m.Called(ctx, tenantID, date, field, amount)
+	return args.Error(0)
+}
+
+// testLogger returns a logger that discards all output
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
 // Helper to create multipart request
@@ -198,9 +214,12 @@ func TestFaceHandler_Register(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockService := &MockFaceService{}
+			mockTracker := &MockUsageTracker{}
 			tt.setupMock(mockService)
+			// Allow any tracking calls (async, best-effort)
+			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService)
+			handler := NewFaceHandler(mockService, mockTracker, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Post("/v1/faces", handler.Register)
 
@@ -308,9 +327,12 @@ func TestFaceHandler_Verify(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockService := &MockFaceService{}
+			mockTracker := &MockUsageTracker{}
 			tt.setupMock(mockService)
+			// Allow any tracking calls (async, best-effort)
+			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService)
+			handler := NewFaceHandler(mockService, mockTracker, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Post("/v1/faces/verify", handler.Verify)
 
@@ -363,9 +385,12 @@ func TestFaceHandler_Delete(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockService := &MockFaceService{}
+			mockTracker := &MockUsageTracker{}
 			tt.setupMock(mockService)
+			// Allow any tracking calls (async, best-effort)
+			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService)
+			handler := NewFaceHandler(mockService, mockTracker, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Delete("/v1/faces/:external_id", handler.Delete)
 
@@ -481,9 +506,12 @@ func TestFaceHandler_CheckLiveness(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockService := &MockFaceService{}
+			mockTracker := &MockUsageTracker{}
 			tt.setupMock(mockService)
+			// Allow any tracking calls (async, best-effort)
+			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService)
+			handler := NewFaceHandler(mockService, mockTracker, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Post("/v1/faces/liveness", handler.CheckLiveness)
 
