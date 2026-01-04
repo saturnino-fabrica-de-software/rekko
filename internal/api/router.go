@@ -95,7 +95,7 @@ func (r *Router) Setup() {
 		go r.wsHub.Run(hubCtx)
 
 		// Initialize Webhook Service and Worker
-		webhookService := webhook.NewService(r.deps.DB)
+		webhookService := webhook.NewService(r.deps.DB, r.logger)
 		r.webhookWorker = webhook.NewWorker(r.deps.DB, webhookService, r.logger)
 
 		ctx, cancel := context.WithCancel(context.Background())
