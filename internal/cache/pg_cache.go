@@ -177,7 +177,7 @@ func (c *PGCache) SetMultiple(ctx context.Context, items map[string][]byte, ttl 
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	query := `
 		INSERT INTO cache_entries (key, value, expires_at)
