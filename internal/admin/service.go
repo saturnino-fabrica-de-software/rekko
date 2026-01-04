@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"runtime"
 
 	"github.com/saturnino-fabrica-de-software/rekko/internal/metrics"
 )

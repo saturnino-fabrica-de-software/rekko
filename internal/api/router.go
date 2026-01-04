@@ -17,10 +17,12 @@ import (
 	adminHandler "github.com/saturnino-fabrica-de-software/rekko/internal/api/handler/admin"
 	superHandler "github.com/saturnino-fabrica-de-software/rekko/internal/api/handler/super"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/cache"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/metrics"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/service"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/usage"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/webhook"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/ws"
 )
@@ -126,6 +128,18 @@ func (r *Router) Setup() {
 		v1.Post("/faces/verify", faceHandler.Verify)
 		v1.Post("/faces/liveness", faceHandler.CheckLiveness)
 		v1.Delete("/faces/:external_id", faceHandler.Delete)
+
+		// Usage service
+		pgCache := cache.NewPGCache(r.deps.DB)
+		cacheAdapter := usage.NewCacheAdapter(pgCache)
+		usageRepo := usage.NewRepository(r.deps.DB)
+		usageService := usage.NewService(usageRepo, webhookService, cacheAdapter, r.logger)
+
+		// Usage handler
+		usageHandler := handler.NewUsageHandler(usageService, r.logger)
+
+		// Usage routes
+		v1.Get("/usage", usageHandler.GetUsage)
 
 		// WebSocket endpoint
 		v1.Get("/ws", ws.UpgradeMiddleware(), ws.Handler(r.wsHub))

@@ -9,11 +9,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testEmail = "admin@rekko.com"
+	testRole  = "super_admin"
+)
+
 func TestJWTService_GenerateToken(t *testing.T) {
 	service := NewJWTService("test-secret-key", "rekko-test", 1*time.Hour)
 	userID := uuid.New()
-	email := "admin@rekko.com"
-	role := "super_admin"
+	email := testEmail
+	role := testRole
 
 	token, err := service.GenerateToken(userID, email, role)
 	require.NoError(t, err)
@@ -23,8 +28,8 @@ func TestJWTService_GenerateToken(t *testing.T) {
 func TestJWTService_ValidateToken(t *testing.T) {
 	service := NewJWTService("test-secret-key", "rekko-test", 1*time.Hour)
 	userID := uuid.New()
-	email := "admin@rekko.com"
-	role := "super_admin"
+	email := testEmail
+	role := testRole
 
 	token, err := service.GenerateToken(userID, email, role)
 	require.NoError(t, err)
@@ -68,8 +73,8 @@ func TestJWTService_ValidateToken_InvalidToken(t *testing.T) {
 func TestJWTService_ValidateToken_ExpiredToken(t *testing.T) {
 	service := NewJWTService("test-secret-key", "rekko-test", -1*time.Hour)
 	userID := uuid.New()
-	email := "admin@rekko.com"
-	role := "super_admin"
+	email := testEmail
+	role := testRole
 
 	token, err := service.GenerateToken(userID, email, role)
 	require.NoError(t, err)
@@ -83,8 +88,8 @@ func TestJWTService_ValidateToken_DifferentSecret(t *testing.T) {
 	service2 := NewJWTService("secret-2", "rekko-test", 1*time.Hour)
 
 	userID := uuid.New()
-	email := "admin@rekko.com"
-	role := "super_admin"
+	email := testEmail
+	role := testRole
 
 	token, err := service1.GenerateToken(userID, email, role)
 	require.NoError(t, err)
@@ -96,8 +101,8 @@ func TestJWTService_ValidateToken_DifferentSecret(t *testing.T) {
 func TestJWTService_RefreshToken(t *testing.T) {
 	service := NewJWTService("test-secret-key", "rekko-test", 1*time.Hour)
 	userID := uuid.New()
-	email := "admin@rekko.com"
-	role := "super_admin"
+	email := testEmail
+	role := testRole
 
 	oldToken, err := service.GenerateToken(userID, email, role)
 	require.NoError(t, err)

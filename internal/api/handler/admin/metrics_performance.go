@@ -134,13 +134,14 @@ func (h *MetricsPerformanceHandler) GetErrorMetrics(c *fiber.Ctx) error {
 func parseMetricsParams(c *fiber.Ctx) (admin.MetricsParams, error) {
 	startDate := c.Query("start_date", time.Now().AddDate(0, 0, -30).Format("2006-01-02"))
 	endDate := c.Query("end_date", time.Now().Format("2006-01-02"))
-	interval := c.Query("interval", "day")
+	const defaultInterval = "day"
+	interval := c.Query("interval", defaultInterval)
 	limit := c.QueryInt("limit", 100)
 	offset := c.QueryInt("offset", 0)
 
 	// Validate interval
-	if interval != "hour" && interval != "day" && interval != "week" && interval != "month" {
-		interval = "day"
+	if interval != "hour" && interval != defaultInterval && interval != "week" && interval != "month" {
+		interval = defaultInterval
 	}
 
 	// Cap limit
