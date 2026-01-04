@@ -62,6 +62,15 @@ func (m *MockSearchAuditRepository) Create(ctx context.Context, audit *domain.Se
 	return args.Error(0)
 }
 
+type MockRateLimiter struct {
+	mock.Mock
+}
+
+func (m *MockRateLimiter) CheckSearchLimit(ctx context.Context, tenantID uuid.UUID, limit int) error {
+	args := m.Called(ctx, tenantID, limit)
+	return args.Error(0)
+}
+
 func (m *MockVerificationRepository) Create(ctx context.Context, v *domain.Verification) error {
 	args := m.Called(ctx, v)
 	return args.Error(0)
@@ -740,14 +749,19 @@ func TestFaceService_Search(t *testing.T) {
 			verificationRepo := &MockVerificationRepository{}
 			searchAuditRepo := &MockSearchAuditRepository{}
 			faceProvider := &MockFaceProvider{}
+			rateLimiter := &MockRateLimiter{}
 
 			tt.setupMocks(faceRepo, verificationRepo, faceProvider, searchAuditRepo)
+
+			// Mock rate limiter to always allow
+			rateLimiter.On("CheckSearchLimit", mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 			svc := &FaceService{
 				faceRepo:         faceRepo,
 				verificationRepo: verificationRepo,
 				searchAuditRepo:  searchAuditRepo,
 				provider:         faceProvider,
+				rateLimiter:      rateLimiter,
 				threshold:        0.8,
 			}
 
@@ -809,15 +823,18 @@ func TestFaceService_Search_WithCustomThreshold(t *testing.T) {
 			tenant := &domain.Tenant{
 				ID: tenantID,
 				Settings: map[string]interface{}{
-					"search_enabled":   true,
-					"search_threshold": tt.tenantThreshold,
+					"search_enabled":    true,
+					"search_threshold":  tt.tenantThreshold,
+					"search_rate_limit": float64(30),
 				},
 			}
 
 			faceRepo := &MockFaceRepository{}
 			faceProvider := &MockFaceProvider{}
 			searchAuditRepo := &MockSearchAuditRepository{}
+			rateLimiter := &MockRateLimiter{}
 
+			rateLimiter.On("CheckSearchLimit", mock.Anything, tenantID, 30).Return(nil)
 			faceProvider.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", []float64{0.1, 0.2}, nil)
 			faceRepo.On("SearchByEmbedding", mock.Anything, tenantID, mock.Anything, tt.expectedThreshold, mock.Anything).Return([]domain.SearchMatch{}, nil)
 			faceRepo.On("CountByTenant", mock.Anything, tenantID).Return(10, nil)
@@ -827,6 +844,7 @@ func TestFaceService_Search_WithCustomThreshold(t *testing.T) {
 				faceRepo:        faceRepo,
 				searchAuditRepo: searchAuditRepo,
 				provider:        faceProvider,
+				rateLimiter:     rateLimiter,
 				threshold:       0.8,
 			}
 

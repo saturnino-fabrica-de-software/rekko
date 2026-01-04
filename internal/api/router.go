@@ -20,6 +20,7 @@ import (
 	"github.com/saturnino-fabrica-de-software/rekko/internal/cache"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/metrics"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/ratelimit"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/service"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/usage"
@@ -120,12 +121,16 @@ func (r *Router) Setup() {
 		// Search audit repository
 		searchAuditRepo := repository.NewSearchAuditRepository(r.deps.DB)
 
+		// Rate limiter for search endpoint
+		searchRateLimiter := ratelimit.NewRateLimiter(r.deps.DB, time.Minute)
+
 		// Face service
 		faceService := service.NewFaceService(
 			r.deps.FaceRepo,
 			r.deps.VerificationRepo,
 			searchAuditRepo,
 			r.deps.FaceProvider,
+			searchRateLimiter,
 		)
 
 		// Face handler with usage tracking

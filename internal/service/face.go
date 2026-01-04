@@ -28,11 +28,16 @@ type SearchAuditRepositoryInterface interface {
 	Create(ctx context.Context, audit *domain.SearchAudit) error
 }
 
+type RateLimiterInterface interface {
+	CheckSearchLimit(ctx context.Context, tenantID uuid.UUID, limit int) error
+}
+
 type FaceService struct {
 	faceRepo         FaceRepositoryInterface
 	verificationRepo VerificationRepositoryInterface
 	searchAuditRepo  SearchAuditRepositoryInterface
 	provider         provider.FaceProvider
+	rateLimiter      RateLimiterInterface
 	threshold        float64
 }
 
@@ -41,12 +46,14 @@ func NewFaceService(
 	verificationRepo VerificationRepositoryInterface,
 	searchAuditRepo SearchAuditRepositoryInterface,
 	faceProvider provider.FaceProvider,
+	rateLimiter RateLimiterInterface,
 ) *FaceService {
 	return &FaceService{
 		faceRepo:         faceRepo,
 		verificationRepo: verificationRepo,
 		searchAuditRepo:  searchAuditRepo,
 		provider:         faceProvider,
+		rateLimiter:      rateLimiter,
 		threshold:        0.8,
 	}
 }
@@ -218,7 +225,12 @@ func (s *FaceService) Search(ctx context.Context, tenant *domain.Tenant, imageBy
 		return nil, domain.ErrInvalidMaxResults
 	}
 
-	// 5. Optional: check liveness if configured
+	// 5. Check rate limit
+	if err := s.rateLimiter.CheckSearchLimit(ctx, tenant.ID, settings.SearchRateLimit); err != nil {
+		return nil, domain.ErrSearchRateLimitExceeded
+	}
+
+	// 6. Optional: check liveness if configured
 	if settings.SearchRequireLiveness {
 		liveness, err := s.provider.CheckLiveness(ctx, imageBytes, settings.LivenessThreshold)
 		if err != nil {
@@ -229,29 +241,29 @@ func (s *FaceService) Search(ctx context.Context, tenant *domain.Tenant, imageBy
 		}
 	}
 
-	// 6. Extract embedding from image
+	// 7. Extract embedding from image
 	_, embedding, err := s.provider.IndexFace(ctx, imageBytes)
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: index face for search: %w", tenant.ID, err)
 	}
 
-	// 7. Search similar faces in database
+	// 8. Search similar faces in database
 	matches, err := s.faceRepo.SearchByEmbedding(ctx, tenant.ID, embedding, threshold, maxResults)
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: search faces: %w", tenant.ID, err)
 	}
 
-	// 8. Count total faces in tenant
+	// 9. Count total faces in tenant
 	totalFaces, err := s.faceRepo.CountByTenant(ctx, tenant.ID)
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: count faces: %w", tenant.ID, err)
 	}
 
-	// 9. Calculate latency
+	// 10. Calculate latency
 	latencyMs := time.Since(start).Milliseconds()
 	searchID := uuid.New()
 
-	// 10. Create audit log (async, best-effort with panic recovery)
+	// 11. Create audit log (async, best-effort with panic recovery)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -261,7 +273,7 @@ func (s *FaceService) Search(ctx context.Context, tenant *domain.Tenant, imageBy
 		s.createSearchAudit(tenant.ID, searchID, matches, threshold, maxResults, latencyMs, clientIP)
 	}()
 
-	// 11. Return result
+	// 12. Return result
 	return &domain.SearchResult{
 		Matches:    matches,
 		TotalFaces: totalFaces,
