@@ -6,11 +6,15 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	swagger "github.com/go-swagno/swagno-fiber/swagger"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/admin"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/docs"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/handler"
+	adminHandler "github.com/saturnino-fabrica-de-software/rekko/internal/api/handler/admin"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/metrics"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/service"
@@ -23,6 +27,7 @@ type Dependencies struct {
 	VerificationRepo *repository.VerificationRepository
 	FaceProvider     provider.FaceProvider
 	LastUsedWorker   *middleware.LastUsedWorker
+	DB               *pgxpool.Pool
 }
 
 type Router struct {
@@ -97,7 +102,40 @@ func (r *Router) Setup() {
 		v1.Post("/faces", faceHandler.Register)
 		v1.Post("/faces/verify", faceHandler.Verify)
 		v1.Delete("/faces/:external_id", faceHandler.Delete)
+
+		// Admin routes
+		adminGroup := v1.Group("/admin")
+		r.setupAdminRoutes(adminGroup)
 	}
+}
+
+func (r *Router) setupAdminRoutes(adminGroup fiber.Router) {
+	// Admin service dependencies
+	metricsRepo := metrics.NewRepository(r.deps.DB)
+	adminService := admin.NewService(metricsRepo, r.deps.DB, r.logger)
+
+	// Admin handlers
+	usageHandler := adminHandler.NewMetricsUsageHandler(adminService, r.logger)
+	performanceHandler := adminHandler.NewMetricsPerformanceHandler(adminService, r.logger)
+	qualityHandler := adminHandler.NewMetricsQualityHandler(adminService, r.logger)
+
+	// Metrics group
+	metricsGroup := adminGroup.Group("/metrics")
+
+	// Usage metrics
+	metricsGroup.Get("/faces", usageHandler.GetFacesMetrics)
+	metricsGroup.Get("/operations", usageHandler.GetOperationsMetrics)
+	metricsGroup.Get("/requests", usageHandler.GetRequestsMetrics)
+
+	// Performance metrics
+	metricsGroup.Get("/latency", performanceHandler.GetLatencyMetrics)
+	metricsGroup.Get("/throughput", performanceHandler.GetThroughputMetrics)
+	metricsGroup.Get("/errors", performanceHandler.GetErrorMetrics)
+
+	// Quality metrics
+	metricsGroup.Get("/quality", qualityHandler.GetQualityMetrics)
+	metricsGroup.Get("/confidence", qualityHandler.GetConfidenceMetrics)
+	metricsGroup.Get("/matches", qualityHandler.GetMatchMetrics)
 }
 
 func (r *Router) App() *fiber.App {

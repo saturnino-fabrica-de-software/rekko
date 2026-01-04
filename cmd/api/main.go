@@ -82,6 +82,7 @@ func run() error {
 		VerificationRepo: verificationRepo,
 		FaceProvider:     faceProvider,
 		LastUsedWorker:   lastUsedWorker,
+		DB:               pool,
 	}
 
 	// Setup router with dependencies
