@@ -56,6 +56,14 @@ func (m *MockFaceService) CheckLiveness(ctx context.Context, imageBytes []byte, 
 	return args.Get(0).(*domain.LivenessResult), args.Error(1)
 }
 
+func (m *MockFaceService) Search(ctx context.Context, tenant *domain.Tenant, imageBytes []byte, threshold float64, maxResults int, clientIP string) (*domain.SearchResult, error) {
+	args := m.Called(ctx, tenant, imageBytes, threshold, maxResults, clientIP)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.SearchResult), args.Error(1)
+}
+
 // MockUsageTracker is a mock implementation of UsageTracker
 type MockUsageTracker struct {
 	mock.Mock
@@ -613,6 +621,170 @@ func TestExtractAndValidateImage(t *testing.T) {
 			} else {
 				assert.Equal(t, 200, resp.StatusCode)
 			}
+		})
+	}
+}
+
+func TestFaceHandler_Search(t *testing.T) {
+	tenantID := uuid.New()
+	searchID := uuid.New()
+	face1ID := uuid.New()
+	face2ID := uuid.New()
+
+	tests := []struct {
+		name           string
+		imageContent   []byte
+		contentType    string
+		threshold      string
+		maxResults     string
+		setupMock      func(*MockFaceService)
+		expectedStatus int
+		checkResponse  func(t *testing.T, body []byte)
+	}{
+		{
+			name:         "successful search with matches",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			threshold:    "0.8",
+			maxResults:   "10",
+			setupMock: func(m *MockFaceService) {
+				m.On("Search", mock.Anything, mock.AnythingOfType("*domain.Tenant"), mock.Anything, float64(0.8), 10, mock.AnythingOfType("string")).Return(&domain.SearchResult{
+					SearchID: searchID,
+					Matches: []domain.SearchMatch{
+						{
+							FaceID:     face1ID,
+							ExternalID: "user_001",
+							Similarity: 0.95,
+						},
+						{
+							FaceID:     face2ID,
+							ExternalID: "user_002",
+							Similarity: 0.87,
+						},
+					},
+					TotalFaces: 100,
+					LatencyMs:  25,
+				}, nil)
+			},
+			expectedStatus: 200,
+			checkResponse: func(t *testing.T, body []byte) {
+				var resp SearchResponse
+				err := json.Unmarshal(body, &resp)
+				assert.NoError(t, err)
+				assert.Len(t, resp.Matches, 2)
+				assert.Equal(t, searchID.String(), resp.SearchID)
+				assert.Equal(t, 100, resp.TotalFaces)
+				assert.Equal(t, int64(25), resp.LatencyMs)
+				assert.Equal(t, "user_001", resp.Matches[0].ExternalID)
+				assert.Equal(t, face1ID.String(), resp.Matches[0].FaceID)
+				assert.Equal(t, 0.95, resp.Matches[0].Similarity)
+			},
+		},
+		{
+			name:         "successful search with no matches",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			threshold:    "",
+			maxResults:   "",
+			setupMock: func(m *MockFaceService) {
+				m.On("Search", mock.Anything, mock.AnythingOfType("*domain.Tenant"), mock.Anything, float64(0), 0, mock.AnythingOfType("string")).Return(&domain.SearchResult{
+					SearchID:   searchID,
+					Matches:    []domain.SearchMatch{},
+					TotalFaces: 100,
+					LatencyMs:  18,
+				}, nil)
+			},
+			expectedStatus: 200,
+			checkResponse: func(t *testing.T, body []byte) {
+				var resp SearchResponse
+				err := json.Unmarshal(body, &resp)
+				assert.NoError(t, err)
+				assert.Len(t, resp.Matches, 0)
+				assert.Equal(t, 100, resp.TotalFaces)
+			},
+		},
+		{
+			name:         "search disabled",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			threshold:    "0.8",
+			maxResults:   "10",
+			setupMock: func(m *MockFaceService) {
+				m.On("Search", mock.Anything, mock.AnythingOfType("*domain.Tenant"), mock.Anything, float64(0.8), 10, mock.AnythingOfType("string")).Return(nil, domain.ErrSearchNotEnabled)
+			},
+			expectedStatus: 403,
+		},
+		{
+			name:         "no face detected",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			threshold:    "0.8",
+			maxResults:   "10",
+			setupMock: func(m *MockFaceService) {
+				m.On("Search", mock.Anything, mock.AnythingOfType("*domain.Tenant"), mock.Anything, float64(0.8), 10, mock.AnythingOfType("string")).Return(nil, domain.ErrNoFaceDetected)
+			},
+			expectedStatus: 422,
+		},
+		{
+			name:         "liveness failed",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			threshold:    "0.8",
+			maxResults:   "10",
+			setupMock: func(m *MockFaceService) {
+				m.On("Search", mock.Anything, mock.AnythingOfType("*domain.Tenant"), mock.Anything, float64(0.8), 10, mock.AnythingOfType("string")).Return(nil, domain.ErrLivenessFailed)
+			},
+			expectedStatus: 422,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := &MockFaceService{}
+			mockTracker := &MockUsageTracker{}
+			tt.setupMock(mockService)
+			// Allow any tracking calls (async, best-effort)
+			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+
+			handler := NewFaceHandler(mockService, mockTracker, testLogger())
+			app := createTestApp(handler, tenantID)
+			app.Post("/v1/faces/search", handler.Search)
+
+			body := &bytes.Buffer{}
+			writer := multipart.NewWriter(body)
+
+			// Add optional form fields
+			if tt.threshold != "" {
+				_ = writer.WriteField("threshold", tt.threshold)
+			}
+			if tt.maxResults != "" {
+				_ = writer.WriteField("max_results", tt.maxResults)
+			}
+
+			// Add image
+			if tt.imageContent != nil {
+				h := make(textproto.MIMEHeader)
+				h.Set("Content-Disposition", `form-data; name="image"; filename="test.jpg"`)
+				h.Set("Content-Type", tt.contentType)
+				part, _ := writer.CreatePart(h)
+				_, _ = part.Write(tt.imageContent)
+			}
+
+			_ = writer.Close()
+
+			req := httptest.NewRequest("POST", "/v1/faces/search", body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+
+			resp, err := app.Test(req)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+
+			if tt.checkResponse != nil {
+				respBody, _ := io.ReadAll(resp.Body)
+				tt.checkResponse(t, respBody)
+			}
+
+			mockService.AssertExpectations(t)
 		})
 	}
 }

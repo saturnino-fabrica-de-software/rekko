@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,7 @@ type FaceService interface {
 	Verify(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte) (*domain.Verification, error)
 	Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error
 	CheckLiveness(ctx context.Context, imageBytes []byte, threshold float64) (*domain.LivenessResult, error)
+	Search(ctx context.Context, tenant *domain.Tenant, imageBytes []byte, threshold float64, maxResults int, clientIP string) (*domain.SearchResult, error)
 }
 
 // UsageTracker interface for tracking usage metrics
@@ -101,6 +103,21 @@ type LivenessChecksResponse struct {
 	FacingCamera bool `json:"facing_camera"`
 	QualityOK    bool `json:"quality_ok"`
 	SingleFace   bool `json:"single_face"`
+}
+
+// SearchResponse response for search endpoint
+type SearchResponse struct {
+	Matches    []SearchMatchResponse `json:"matches"`
+	TotalFaces int                   `json:"total_faces"`
+	LatencyMs  int64                 `json:"latency_ms"`
+	SearchID   string                `json:"search_id"`
+}
+
+// SearchMatchResponse represents a single match in search results
+type SearchMatchResponse struct {
+	ExternalID string  `json:"external_id"`
+	FaceID     string  `json:"face_id"`
+	Similarity float64 `json:"similarity"`
 }
 
 // Register POST /v1/faces - register a new face
@@ -242,6 +259,55 @@ func (h *FaceHandler) CheckLiveness(c *fiber.Ctx) error {
 			SingleFace:   result.Checks.SingleFace,
 		},
 		Reasons: result.Reasons,
+	})
+}
+
+// Search POST /v1/faces/search - search for similar faces (1:N)
+func (h *FaceHandler) Search(c *fiber.Ctx) error {
+	// 1. Extract tenant from context
+	tenant, err := middleware.GetTenant(c)
+	if err != nil {
+		return err
+	}
+
+	// 2. Extract and validate image
+	imageBytes, err := extractAndValidateImage(c)
+	if err != nil {
+		return fmt.Errorf("search faces: %w", err)
+	}
+
+	// 3. Extract optional parameters
+	threshold, _ := strconv.ParseFloat(c.FormValue("threshold"), 64)
+	maxResults, _ := strconv.Atoi(c.FormValue("max_results"))
+
+	// 4. Extract client IP
+	clientIP := c.IP()
+
+	// 5. Call service
+	result, err := h.service.Search(c.Context(), tenant, imageBytes, threshold, maxResults, clientIP)
+	if err != nil {
+		return err
+	}
+
+	// 6. Track usage (async)
+	h.trackUsage(tenant.ID, "searches")
+
+	// 7. Convert matches to response
+	matches := make([]SearchMatchResponse, len(result.Matches))
+	for i, m := range result.Matches {
+		matches[i] = SearchMatchResponse{
+			ExternalID: m.ExternalID,
+			FaceID:     m.FaceID.String(),
+			Similarity: m.Similarity,
+		}
+	}
+
+	// 8. Return result
+	return c.JSON(SearchResponse{
+		Matches:    matches,
+		TotalFaces: result.TotalFaces,
+		LatencyMs:  result.LatencyMs,
+		SearchID:   result.SearchID.String(),
 	})
 }
 

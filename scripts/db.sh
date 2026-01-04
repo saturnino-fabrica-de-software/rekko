@@ -18,7 +18,7 @@ DB_PASSWORD=${POSTGRES_PASSWORD:-rekko}
 DB_NAME=${POSTGRES_DB:-rekko_dev}
 DATABASE_URL=${DATABASE_URL:-postgres://$DB_USER:$DB_PASSWORD@$DB_HOST:$DB_PORT/$DB_NAME?sslmode=disable}
 
-MIGRATIONS_PATH="./migrations"
+MIGRATIONS_PATH="./internal/database/migrations"
 
 # Colors
 RED='\033[0;31m'

@@ -34,4 +34,11 @@ type FaceRepositoryInterface interface {
 	Create(ctx context.Context, face *domain.Face) error
 	GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Face, error)
 	Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error
+	SearchByEmbedding(ctx context.Context, tenantID uuid.UUID, embedding []float64, threshold float64, limit int) ([]domain.SearchMatch, error)
+	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+}
+
+// SearchAuditRepositoryInterface defines operations for search audit logging
+type SearchAuditRepositoryInterface interface {
+	Create(ctx context.Context, audit *domain.SearchAudit) error
 }

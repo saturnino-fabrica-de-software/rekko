@@ -117,10 +117,14 @@ func (r *Router) Setup() {
 		// Usage repository (needed for both FaceHandler and UsageService)
 		usageRepo := usage.NewRepository(r.deps.DB)
 
+		// Search audit repository
+		searchAuditRepo := repository.NewSearchAuditRepository(r.deps.DB)
+
 		// Face service
 		faceService := service.NewFaceService(
 			r.deps.FaceRepo,
 			r.deps.VerificationRepo,
+			searchAuditRepo,
 			r.deps.FaceProvider,
 		)
 
@@ -130,6 +134,7 @@ func (r *Router) Setup() {
 		// Face routes
 		v1.Post("/faces", faceHandler.Register)
 		v1.Post("/faces/verify", faceHandler.Verify)
+		v1.Post("/faces/search", faceHandler.Search)
 		v1.Post("/faces/liveness", faceHandler.CheckLiveness)
 		v1.Delete("/faces/:external_id", faceHandler.Delete)
 
