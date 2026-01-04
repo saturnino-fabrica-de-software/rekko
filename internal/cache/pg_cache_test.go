@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testKey = "test:key"
+
 func TestPGCache_Set(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	require.NoError(t, err)
@@ -19,7 +21,7 @@ func TestPGCache_Set(t *testing.T) {
 	cache := NewPGCacheWithDB(mock)
 	ctx := context.Background()
 
-	key := "test:key"
+	key := testKey
 	value := []byte("test value")
 	ttl := 5 * time.Minute
 
@@ -41,7 +43,7 @@ func TestPGCache_Get(t *testing.T) {
 		cache := NewPGCacheWithDB(mock)
 		ctx := context.Background()
 
-		key := "test:key"
+		key := testKey
 		value := []byte("test value")
 		expiresAt := time.Now().Add(5 * time.Minute)
 
@@ -117,7 +119,7 @@ func TestPGCache_Delete(t *testing.T) {
 	cache := NewPGCacheWithDB(mock)
 	ctx := context.Background()
 
-	key := "test:key"
+	key := testKey
 
 	mock.ExpectExec("DELETE FROM cache_entries WHERE key").
 		WithArgs(key).

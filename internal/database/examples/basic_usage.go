@@ -9,23 +9,25 @@ import (
 	"github.com/saturnino-fabrica-de-software/rekko/internal/database"
 )
 
+const defaultDSN = "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+
 // ExampleBasicMigration demonstrates basic migration usage
 func ExampleBasicMigration() {
 	// Connect to database
-	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+	dsn := defaultDSN
 	cfg := database.DefaultPoolConfig(dsn)
 	db, err := database.NewPool(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Run migrations
 	migrator, err := database.NewMigrator(db, "rekko_dev")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer migrator.Close()
+	defer func() { _ = migrator.Close() }()
 
 	if err := migrator.Up(); err != nil {
 		log.Fatal(err)
@@ -36,13 +38,13 @@ func ExampleBasicMigration() {
 
 // ExampleInsertTenant demonstrates inserting a tenant
 func ExampleInsertTenant() {
-	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+	dsn := defaultDSN
 	cfg := database.DefaultPoolConfig(dsn)
 	db, err := database.NewPool(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -67,13 +69,13 @@ func ExampleInsertTenant() {
 
 // ExampleInsertAPIKey demonstrates inserting an API key
 func ExampleInsertAPIKey() {
-	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+	dsn := defaultDSN
 	cfg := database.DefaultPoolConfig(dsn)
 	db, err := database.NewPool(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -97,13 +99,13 @@ func ExampleInsertAPIKey() {
 
 // ExampleQueryTenant demonstrates querying a tenant by slug
 func ExampleQueryTenant() {
-	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+	dsn := defaultDSN
 	cfg := database.DefaultPoolConfig(dsn)
 	db, err := database.NewPool(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -135,13 +137,13 @@ func ExampleQueryTenant() {
 
 // ExampleVerifyAPIKey demonstrates API key verification
 func ExampleVerifyAPIKey() {
-	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+	dsn := defaultDSN
 	cfg := database.DefaultPoolConfig(dsn)
 	db, err := database.NewPool(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -192,13 +194,13 @@ func ExampleVerifyAPIKey() {
 
 // ExampleHealthCheck demonstrates database health checking
 func ExampleHealthCheck() {
-	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+	dsn := defaultDSN
 	cfg := database.DefaultPoolConfig(dsn)
 	db, err := database.NewPool(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -219,13 +221,13 @@ func ExampleHealthCheck() {
 
 // ExampleTransaction demonstrates a transaction with tenant creation and API key
 func ExampleTransaction() {
-	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_dev?sslmode=disable"
+	dsn := defaultDSN
 	cfg := database.DefaultPoolConfig(dsn)
 	db, err := database.NewPool(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx := context.Background()
 
@@ -234,7 +236,7 @@ func ExampleTransaction() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer tx.Rollback() // Rollback if not committed
+	defer func() { _ = tx.Rollback() }() // Rollback if not committed
 
 	// Insert tenant
 	var tenantID string

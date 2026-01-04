@@ -23,7 +23,7 @@ func TestMigratorIntegration(t *testing.T) {
 	dsn := "postgres://rekko:rekko_dev_pass@localhost:5432/rekko_test?sslmode=disable"
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Verify connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -37,13 +37,13 @@ func TestMigratorIntegration(t *testing.T) {
 		migrator, err := database.NewMigrator(db, "rekko_test")
 		require.NoError(t, err)
 		require.NotNil(t, migrator)
-		defer migrator.Close()
+		defer func() { _ = migrator.Close() }()
 	})
 
 	t.Run("Up runs migrations successfully", func(t *testing.T) {
 		migrator, err := database.NewMigrator(db, "rekko_test")
 		require.NoError(t, err)
-		defer migrator.Close()
+		defer func() { _ = migrator.Close() }()
 
 		// Run migrations
 		err = migrator.Up()
@@ -57,7 +57,7 @@ func TestMigratorIntegration(t *testing.T) {
 	t.Run("Version returns current version", func(t *testing.T) {
 		migrator, err := database.NewMigrator(db, "rekko_test")
 		require.NoError(t, err)
-		defer migrator.Close()
+		defer func() { _ = migrator.Close() }()
 
 		version, dirty, err := migrator.Version()
 		require.NoError(t, err)
@@ -183,7 +183,7 @@ func getTableColumns(t *testing.T, db *sql.DB, tableName string) []string {
 		ORDER BY ordinal_position
 	`, tableName)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var columns []string
 	for rows.Next() {
@@ -205,7 +205,7 @@ func getTableIndexes(t *testing.T, db *sql.DB, tableName string) []string {
 		AND tablename = $1
 	`, tableName)
 	require.NoError(t, err)
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var indexes []string
 	for rows.Next() {
