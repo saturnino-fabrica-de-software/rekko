@@ -74,6 +74,16 @@ func (m *MockUsageTracker) IncrementDaily(ctx context.Context, tenantID uuid.UUI
 	return args.Error(0)
 }
 
+// MockWebhookService is a mock implementation of WebhookService
+type MockWebhookService struct {
+	mock.Mock
+}
+
+func (m *MockWebhookService) Dispatch(ctx context.Context, tenantID uuid.UUID, eventType string, data any) error {
+	args := m.Called(ctx, tenantID, eventType, data)
+	return args.Error(0)
+}
+
 // testLogger returns a logger that discards all output
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -227,7 +237,9 @@ func TestFaceHandler_Register(t *testing.T) {
 			// Allow any tracking calls (async, best-effort)
 			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService, mockTracker, testLogger())
+			mockWebhook := new(MockWebhookService)
+			mockWebhook.On("Dispatch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			handler := NewFaceHandler(mockService, mockTracker, mockWebhook, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Post("/v1/faces", handler.Register)
 
@@ -340,7 +352,9 @@ func TestFaceHandler_Verify(t *testing.T) {
 			// Allow any tracking calls (async, best-effort)
 			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService, mockTracker, testLogger())
+			mockWebhook := new(MockWebhookService)
+			mockWebhook.On("Dispatch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			handler := NewFaceHandler(mockService, mockTracker, mockWebhook, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Post("/v1/faces/verify", handler.Verify)
 
@@ -398,7 +412,9 @@ func TestFaceHandler_Delete(t *testing.T) {
 			// Allow any tracking calls (async, best-effort)
 			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService, mockTracker, testLogger())
+			mockWebhook := new(MockWebhookService)
+			mockWebhook.On("Dispatch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			handler := NewFaceHandler(mockService, mockTracker, mockWebhook, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Delete("/v1/faces/:external_id", handler.Delete)
 
@@ -519,7 +535,9 @@ func TestFaceHandler_CheckLiveness(t *testing.T) {
 			// Allow any tracking calls (async, best-effort)
 			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService, mockTracker, testLogger())
+			mockWebhook := new(MockWebhookService)
+			mockWebhook.On("Dispatch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			handler := NewFaceHandler(mockService, mockTracker, mockWebhook, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Post("/v1/faces/liveness", handler.CheckLiveness)
 
@@ -746,7 +764,9 @@ func TestFaceHandler_Search(t *testing.T) {
 			// Allow any tracking calls (async, best-effort)
 			mockTracker.On("IncrementDaily", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 
-			handler := NewFaceHandler(mockService, mockTracker, testLogger())
+			mockWebhook := new(MockWebhookService)
+			mockWebhook.On("Dispatch", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+			handler := NewFaceHandler(mockService, mockTracker, mockWebhook, testLogger())
 			app := createTestApp(handler, tenantID)
 			app.Post("/v1/faces/search", handler.Search)
 

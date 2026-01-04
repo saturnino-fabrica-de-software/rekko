@@ -134,7 +134,7 @@ func (r *Router) Setup() {
 		)
 
 		// Face handler with usage tracking
-		faceHandler := handler.NewFaceHandler(faceService, usageRepo, r.logger)
+		faceHandler := handler.NewFaceHandler(faceService, usageRepo, webhookService, r.logger)
 
 		// Face routes
 		v1.Post("/faces", faceHandler.Register)

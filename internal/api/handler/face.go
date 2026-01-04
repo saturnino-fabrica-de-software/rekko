@@ -41,19 +41,26 @@ type UsageTracker interface {
 	IncrementDaily(ctx context.Context, tenantID uuid.UUID, date time.Time, field string, amount int) error
 }
 
+// WebhookService interface for dispatching events
+type WebhookService interface {
+	Dispatch(ctx context.Context, tenantID uuid.UUID, eventType string, data interface{}) error
+}
+
 // FaceHandler handles face-related requests
 type FaceHandler struct {
-	service      FaceService
-	usageTracker UsageTracker
-	logger       *slog.Logger
+	service        FaceService
+	usageTracker   UsageTracker
+	webhookService WebhookService
+	logger         *slog.Logger
 }
 
 // NewFaceHandler creates a new FaceHandler instance
-func NewFaceHandler(service FaceService, usageTracker UsageTracker, logger *slog.Logger) *FaceHandler {
+func NewFaceHandler(service FaceService, usageTracker UsageTracker, webhookService WebhookService, logger *slog.Logger) *FaceHandler {
 	return &FaceHandler{
-		service:      service,
-		usageTracker: usageTracker,
-		logger:       logger,
+		service:        service,
+		usageTracker:   usageTracker,
+		webhookService: webhookService,
+		logger:         logger,
 	}
 }
 
@@ -68,6 +75,22 @@ func (h *FaceHandler) trackUsage(tenantID uuid.UUID, field string) {
 				"error", err,
 				"tenant_id", tenantID,
 				"field", field,
+			)
+		}
+	}()
+}
+
+// dispatchFaceEvent dispatches a face event to webhooks (best-effort, async)
+func (h *FaceHandler) dispatchFaceEvent(tenantID uuid.UUID, eventType string, data interface{}) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := h.webhookService.Dispatch(ctx, tenantID, eventType, data); err != nil {
+			h.logger.Warn("failed to dispatch webhook event",
+				"error", err,
+				"tenant_id", tenantID,
+				"event_type", eventType,
 			)
 		}
 	}()
@@ -152,7 +175,14 @@ func (h *FaceHandler) Register(c *fiber.Ctx) error {
 	// 6. Track usage (async, best-effort)
 	h.trackUsage(tenant.ID, "registrations")
 
-	// 7. Return response
+	// 7. Dispatch webhook event (async, best-effort)
+	h.dispatchFaceEvent(tenant.ID, "face.registered", map[string]interface{}{
+		"face_id":       face.ID.String(),
+		"external_id":   face.ExternalID,
+		"quality_score": face.QualityScore,
+	})
+
+	// 8. Return response
 	return c.Status(fiber.StatusCreated).JSON(RegisterResponse{
 		FaceID:       face.ID.String(),
 		ExternalID:   face.ExternalID,
@@ -163,6 +193,8 @@ func (h *FaceHandler) Register(c *fiber.Ctx) error {
 
 // Verify POST /v1/faces/verify - verify face 1:1
 func (h *FaceHandler) Verify(c *fiber.Ctx) error {
+	start := time.Now()
+
 	// 1. Extract tenant_id from context
 	tenantID, err := middleware.GetTenantID(c)
 	if err != nil {
@@ -190,7 +222,16 @@ func (h *FaceHandler) Verify(c *fiber.Ctx) error {
 	// 5. Track usage (async, best-effort)
 	h.trackUsage(tenantID, "verifications")
 
-	// 6. Return response
+	// 6. Dispatch webhook event (async, best-effort)
+	elapsed := time.Since(start)
+	h.dispatchFaceEvent(tenantID, "face.verified", map[string]interface{}{
+		"verified":    verification.Verified,
+		"confidence":  verification.Confidence,
+		"external_id": externalID,
+		"latency_ms":  elapsed.Milliseconds(),
+	})
+
+	// 7. Return response
 	return c.JSON(VerifyResponse{
 		Verified:       verification.Verified,
 		Confidence:     verification.Confidence,
@@ -218,7 +259,12 @@ func (h *FaceHandler) Delete(c *fiber.Ctx) error {
 		return err
 	}
 
-	// 4. Return 204 No Content
+	// 4. Dispatch webhook event (async, best-effort)
+	h.dispatchFaceEvent(tenantID, "face.deleted", map[string]interface{}{
+		"external_id": externalID,
+	})
+
+	// 5. Return 204 No Content
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -302,7 +348,22 @@ func (h *FaceHandler) Search(c *fiber.Ctx) error {
 		}
 	}
 
-	// 8. Return result
+	// 8. Dispatch webhook event (async, best-effort)
+	var topMatch map[string]interface{}
+	if len(result.Matches) > 0 {
+		topMatch = map[string]interface{}{
+			"face_id":    result.Matches[0].FaceID.String(),
+			"similarity": result.Matches[0].Similarity,
+		}
+	}
+
+	h.dispatchFaceEvent(tenant.ID, "face.search", map[string]interface{}{
+		"matches_count": len(result.Matches),
+		"top_match":     topMatch,
+		"search_id":     result.SearchID.String(),
+	})
+
+	// 9. Return result
 	return c.JSON(SearchResponse{
 		Matches:    matches,
 		TotalFaces: result.TotalFaces,
