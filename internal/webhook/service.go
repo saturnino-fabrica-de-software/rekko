@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -16,15 +17,61 @@ import (
 type Service struct {
 	db     *pgxpool.Pool
 	client *http.Client
+	logger *slog.Logger
 }
 
-func NewService(db *pgxpool.Pool) *Service {
+func NewService(db *pgxpool.Pool, logger *slog.Logger) *Service {
 	return &Service{
-		db: db,
+		db:     db,
+		logger: logger,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
 	}
+}
+
+// Dispatch sends an event to all enabled webhooks for the tenant
+func (s *Service) Dispatch(ctx context.Context, tenantID uuid.UUID, eventType string, data interface{}) error {
+	webhooks, err := s.GetWebhooksByEvent(ctx, tenantID, eventType)
+	if err != nil {
+		return fmt.Errorf("get webhooks: %w", err)
+	}
+
+	if len(webhooks) == 0 {
+		s.logger.Debug("no webhooks configured for event",
+			"tenant_id", tenantID,
+			"event_type", eventType)
+		return nil
+	}
+
+	for _, wh := range webhooks {
+		event := EventPayload{
+			Type:      eventType,
+			Timestamp: time.Now().UTC(),
+			TenantID:  tenantID,
+			Data:      data,
+		}
+
+		// Dispatch asynchronously (best-effort)
+		go func(w *Webhook, e EventPayload) {
+			// Use background context to avoid cancellation
+			bgCtx := context.Background()
+			if err := s.Send(bgCtx, w, e); err != nil {
+				s.logger.Error("webhook dispatch failed",
+					"webhook_id", w.ID,
+					"webhook_name", w.Name,
+					"event_type", e.Type,
+					"error", err)
+			} else {
+				s.logger.Info("webhook dispatched",
+					"webhook_id", w.ID,
+					"webhook_name", w.Name,
+					"event_type", e.Type)
+			}
+		}(wh, event)
+	}
+
+	return nil
 }
 
 func (s *Service) Send(ctx context.Context, webhook *Webhook, event EventPayload) error {
