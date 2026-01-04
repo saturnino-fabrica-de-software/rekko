@@ -48,6 +48,39 @@ func (r *Repository) GetPlanByID(ctx context.Context, planID string) (*Plan, err
 	return &plan, nil
 }
 
+func (r *Repository) GetPlanWithOverrides(ctx context.Context, tenantID uuid.UUID, planID string) (*Plan, error) {
+	plan, err := r.GetPlanByID(ctx, planID)
+	if err != nil {
+		return nil, err
+	}
+
+	query := `
+		SELECT quota_registrations, quota_verifications, overage_price
+		FROM tenant_plan_overrides
+		WHERE tenant_id = $1
+	`
+
+	var overrideReg, overrideVer *int
+	var overridePrice *float64
+
+	err = r.pool.QueryRow(ctx, query, tenantID).Scan(&overrideReg, &overrideVer, &overridePrice)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("tenant %s: get plan overrides: %w", tenantID, err)
+	}
+
+	if overrideReg != nil {
+		plan.QuotaRegistrations = *overrideReg
+	}
+	if overrideVer != nil {
+		plan.QuotaVerifications = *overrideVer
+	}
+	if overridePrice != nil {
+		plan.OveragePrice = *overridePrice
+	}
+
+	return plan, nil
+}
+
 func (r *Repository) GetDailyUsage(ctx context.Context, tenantID uuid.UUID, startDate, endDate time.Time) ([]UsageRecord, error) {
 	query := `
 		SELECT id, tenant_id, date, registrations, verifications, liveness_checks, created_at, updated_at
@@ -115,17 +148,33 @@ func (r *Repository) AggregatePeriod(ctx context.Context, tenantID uuid.UUID, st
 	return &record, nil
 }
 
-func (r *Repository) IncrementDaily(ctx context.Context, tenantID uuid.UUID, date time.Time, field string, amount int) error {
-	if field != "registrations" && field != "verifications" && field != "liveness_checks" {
-		return fmt.Errorf("invalid field: %s", field)
-	}
-
-	query := fmt.Sprintf(`
-		INSERT INTO usage_daily (tenant_id, date, %s)
+// Pre-built queries to avoid SQL injection via fmt.Sprintf
+var incrementQueries = map[string]string{
+	"registrations": `
+		INSERT INTO usage_daily (tenant_id, date, registrations)
 		VALUES ($1, $2, $3)
 		ON CONFLICT (tenant_id, date)
-		DO UPDATE SET %s = usage_daily.%s + EXCLUDED.%s, updated_at = NOW()
-	`, field, field, field, field)
+		DO UPDATE SET registrations = usage_daily.registrations + EXCLUDED.registrations, updated_at = NOW()
+	`,
+	"verifications": `
+		INSERT INTO usage_daily (tenant_id, date, verifications)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (tenant_id, date)
+		DO UPDATE SET verifications = usage_daily.verifications + EXCLUDED.verifications, updated_at = NOW()
+	`,
+	"liveness_checks": `
+		INSERT INTO usage_daily (tenant_id, date, liveness_checks)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (tenant_id, date)
+		DO UPDATE SET liveness_checks = usage_daily.liveness_checks + EXCLUDED.liveness_checks, updated_at = NOW()
+	`,
+}
+
+func (r *Repository) IncrementDaily(ctx context.Context, tenantID uuid.UUID, date time.Time, field string, amount int) error {
+	query, ok := incrementQueries[field]
+	if !ok {
+		return fmt.Errorf("invalid field: %s", field)
+	}
 
 	_, err := r.pool.Exec(ctx, query, tenantID, date, amount)
 	if err != nil {

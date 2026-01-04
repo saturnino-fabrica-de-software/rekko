@@ -133,10 +133,10 @@ func (r *Router) Setup() {
 		pgCache := cache.NewPGCache(r.deps.DB)
 		cacheAdapter := usage.NewCacheAdapter(pgCache)
 		usageRepo := usage.NewRepository(r.deps.DB)
-		usageService := usage.NewService(usageRepo, webhookService, cacheAdapter)
+		usageService := usage.NewService(usageRepo, webhookService, cacheAdapter, r.logger)
 
 		// Usage handler
-		usageHandler := handler.NewUsageHandler(usageService)
+		usageHandler := handler.NewUsageHandler(usageService, r.logger)
 
 		// Usage routes
 		v1.Get("/usage", usageHandler.GetUsage)

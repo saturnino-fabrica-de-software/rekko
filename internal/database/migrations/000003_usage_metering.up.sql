@@ -42,9 +42,31 @@ COMMENT ON COLUMN usage_daily.registrations IS 'Number of face registrations on 
 COMMENT ON COLUMN usage_daily.verifications IS 'Number of face verifications on this date';
 COMMENT ON COLUMN usage_daily.liveness_checks IS 'Number of liveness checks on this date';
 
+-- Tenant plan overrides for custom quotas (multi-tenancy)
+CREATE TABLE IF NOT EXISTS tenant_plan_overrides (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    quota_registrations INTEGER,
+    quota_verifications INTEGER,
+    overage_price DECIMAL(10, 4),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(tenant_id)
+);
+
+CREATE INDEX idx_tenant_plan_overrides_tenant ON tenant_plan_overrides(tenant_id);
+
+COMMENT ON TABLE tenant_plan_overrides IS 'Custom plan overrides per tenant for negotiated quotas';
+COMMENT ON COLUMN tenant_plan_overrides.quota_registrations IS 'Override for quota_registrations, NULL = use plan default';
+COMMENT ON COLUMN tenant_plan_overrides.quota_verifications IS 'Override for quota_verifications, NULL = use plan default';
+COMMENT ON COLUMN tenant_plan_overrides.overage_price IS 'Override for overage_price, NULL = use plan default';
+
 -- Triggers for updated_at
 CREATE TRIGGER update_usage_daily_updated_at BEFORE UPDATE ON usage_daily
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_plans_updated_at BEFORE UPDATE ON plans
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_tenant_plan_overrides_updated_at BEFORE UPDATE ON tenant_plan_overrides
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

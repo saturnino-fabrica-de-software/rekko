@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +16,8 @@ const (
 	EventQuotaCritical = "quota.critical"
 	EventQuotaExceeded = "quota.exceeded"
 
-	cacheKeyUsage = "usage:%s:%s"
+	cacheKeyUsage = "usage:v1:%s:%s"
+	cacheTTL      = 5 * time.Minute
 )
 
 type CacheService interface {
@@ -32,13 +34,15 @@ type Service struct {
 	repo           *Repository
 	webhookService WebhookService
 	cache          CacheService
+	logger         *slog.Logger
 }
 
-func NewService(repo *Repository, webhookService WebhookService, cache CacheService) *Service {
+func NewService(repo *Repository, webhookService WebhookService, cache CacheService, logger *slog.Logger) *Service {
 	return &Service{
 		repo:           repo,
 		webhookService: webhookService,
 		cache:          cache,
+		logger:         logger,
 	}
 }
 
@@ -71,7 +75,7 @@ func (s *Service) GetUsageForPeriod(ctx context.Context, tenantID uuid.UUID, pla
 }
 
 func (s *Service) getUsageForPeriod(ctx context.Context, tenantID uuid.UUID, planID, period string, startDate, endDate time.Time) (*UsageSummary, error) {
-	plan, err := s.repo.GetPlanByID(ctx, planID)
+	plan, err := s.repo.GetPlanWithOverrides(ctx, tenantID, planID)
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: get plan: %w", tenantID, err)
 	}
@@ -84,7 +88,13 @@ func (s *Service) getUsageForPeriod(ctx context.Context, tenantID uuid.UUID, pla
 	summary := s.calculateSummary(plan, usage, period)
 
 	cacheKey := fmt.Sprintf(cacheKeyUsage, tenantID, period)
-	_ = s.cache.Set(ctx, cacheKey, summary, 5*time.Minute)
+	if err := s.cache.Set(ctx, cacheKey, summary, cacheTTL); err != nil {
+		s.logger.Warn("failed to cache usage summary",
+			"error", err,
+			"tenant_id", tenantID,
+			"period", period,
+		)
+	}
 
 	return summary, nil
 }
@@ -160,9 +170,17 @@ func (s *Service) sendAlert(ctx context.Context, tenantID uuid.UUID, alert Usage
 			},
 		}
 
-		if err := s.webhookService.Send(ctx, wh, event); err != nil {
-			return fmt.Errorf("send webhook: %w", err)
-		}
+		// Send webhooks asynchronously (best-effort delivery)
+		go func(w *webhook.Webhook, e webhook.EventPayload) {
+			if err := s.webhookService.Send(context.Background(), w, e); err != nil {
+				s.logger.Error("failed to send quota alert webhook",
+					"error", err,
+					"webhook_id", w.ID,
+					"tenant_id", tenantID,
+					"alert_type", alert.Type,
+				)
+			}
+		}(wh, event)
 	}
 
 	return nil

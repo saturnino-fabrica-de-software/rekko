@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -18,10 +19,14 @@ type UsageService interface {
 
 type UsageHandler struct {
 	service UsageService
+	logger  *slog.Logger
 }
 
-func NewUsageHandler(service UsageService) *UsageHandler {
-	return &UsageHandler{service: service}
+func NewUsageHandler(service UsageService, logger *slog.Logger) *UsageHandler {
+	return &UsageHandler{
+		service: service,
+		logger:  logger,
+	}
 }
 
 func (h *UsageHandler) GetUsage(c *fiber.Ctx) error {
@@ -40,7 +45,15 @@ func (h *UsageHandler) GetUsage(c *fiber.Ctx) error {
 	}
 
 	if err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		h.logger.Error("failed to get usage",
+			"error", err,
+			"tenant_id", tenant.ID,
+			"period", period,
+		)
+		if strings.Contains(err.Error(), "invalid period format") {
+			return fiber.NewError(fiber.StatusBadRequest, "Invalid period format, use YYYY-MM")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, "Failed to retrieve usage data")
 	}
 
 	return c.JSON(summary)
