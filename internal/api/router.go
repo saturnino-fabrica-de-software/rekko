@@ -2,6 +2,7 @@ package api
 
 import (
 	"log/slog"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -13,6 +14,7 @@ import (
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/docs"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/handler"
 	adminHandler "github.com/saturnino-fabrica-de-software/rekko/internal/api/handler/admin"
+	superHandler "github.com/saturnino-fabrica-de-software/rekko/internal/api/handler/super"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/metrics"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
@@ -106,6 +108,9 @@ func (r *Router) Setup() {
 		// Admin routes
 		adminGroup := v1.Group("/admin")
 		r.setupAdminRoutes(adminGroup)
+
+		// Super Admin routes (JWT auth)
+		r.setupSuperAdminRoutes(v1)
 	}
 }
 
@@ -136,6 +141,46 @@ func (r *Router) setupAdminRoutes(adminGroup fiber.Router) {
 	metricsGroup.Get("/quality", qualityHandler.GetQualityMetrics)
 	metricsGroup.Get("/confidence", qualityHandler.GetConfidenceMetrics)
 	metricsGroup.Get("/matches", qualityHandler.GetMatchMetrics)
+}
+
+func (r *Router) setupSuperAdminRoutes(v1Group fiber.Router) {
+	// Admin service dependencies
+	metricsRepo := metrics.NewRepository(r.deps.DB)
+	adminService := admin.NewService(metricsRepo, r.deps.DB, r.logger)
+
+	// JWT service for super admin authentication
+	jwtService := admin.NewJWTService(
+		"your-secret-key", // TODO: move to config
+		"rekko-api",
+		24*time.Hour,
+	)
+
+	// Super admin group with JWT authentication
+	superGroup := v1Group.Group("/super")
+	superGroup.Use(middleware.AdminAuth(
+		middleware.AdminLevelSuper,
+		middleware.AdminAuthDependencies{
+			JWTService: jwtService,
+			Logger:     r.logger,
+		},
+	))
+
+	// Create super admin handlers
+	superTenantsHandler := superHandler.NewTenantsHandler(adminService, r.logger)
+	superSystemHandler := superHandler.NewSystemHandler(adminService, r.logger)
+	superProvidersHandler := superHandler.NewProvidersHandler(adminService, r.logger)
+
+	// Tenants routes
+	superGroup.Get("/tenants", superTenantsHandler.ListTenants)
+	superGroup.Get("/tenants/:id/metrics", superTenantsHandler.GetTenantMetrics)
+	superGroup.Post("/tenants/:id/quota", superTenantsHandler.UpdateTenantQuota)
+
+	// System routes
+	superGroup.Get("/system/health", superSystemHandler.GetSystemHealth)
+	superGroup.Get("/system/metrics", superSystemHandler.GetSystemMetrics)
+
+	// Providers routes
+	superGroup.Get("/providers", superProvidersHandler.GetProvidersStatus)
 }
 
 func (r *Router) App() *fiber.App {

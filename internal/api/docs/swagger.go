@@ -267,6 +267,109 @@ type MatchMetricsResponse struct {
 	Pagination *PaginationMeta   `json:"pagination,omitempty"`
 }
 
+
+// Super Admin Types
+
+// TenantMetricsSummary contains summary metrics for a tenant
+type TenantMetricsSummary struct {
+	TotalFaces    int64   `json:"total_faces" example:"250"`
+	TotalRequests int64   `json:"total_requests" example:"5000"`
+	AvgLatencyMs  float64 `json:"avg_latency_ms" example:"45.5"`
+	ErrorRate     float64 `json:"error_rate" example:"2.5"`
+}
+
+// TenantWithMetrics represents a tenant with metrics
+type TenantWithMetrics struct {
+	ID        string               `json:"id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	Name      string               `json:"name" example:"Acme Corp"`
+	PlanType  string               `json:"plan_type" example:"pro"`
+	IsActive  bool                 `json:"is_active" example:"true"`
+	CreatedAt string               `json:"created_at" example:"2024-01-01T00:00:00Z"`
+	Metrics   TenantMetricsSummary `json:"metrics"`
+}
+
+// ListTenantsResponse wraps list of tenants with metrics
+type ListTenantsResponse struct {
+	Data []TenantWithMetrics `json:"data"`
+	Meta map[string]int      `json:"meta"`
+}
+
+// TenantDetailedMetricsResponse wraps detailed tenant metrics
+type TenantDetailedMetricsResponse struct {
+	Data TenantMetricsSummary `json:"data"`
+	Meta map[string]string    `json:"meta"`
+}
+
+// ServiceHealth represents health of a single service
+type ServiceHealth struct {
+	Status  string `json:"status" example:"healthy"`
+	Latency string `json:"latency" example:"< 1ms"`
+	Message string `json:"message,omitempty"`
+}
+
+// ProviderHealth represents health of a face recognition provider
+type ProviderHealth struct {
+	Name    string `json:"name" example:"rekognition"`
+	Status  string `json:"status" example:"healthy"`
+	Latency string `json:"latency,omitempty" example:"15ms"`
+	Message string `json:"message,omitempty"`
+}
+
+// SystemHealthResponse represents system health check response
+type SystemHealthResponse struct {
+	Status    string           `json:"status" example:"healthy"`
+	Database  ServiceHealth    `json:"database"`
+	Providers []ProviderHealth `json:"providers"`
+	Uptime    string           `json:"uptime" example:"24h30m"`
+	Version   string           `json:"version" example:"1.0.0"`
+}
+
+// MemoryMetrics contains Go runtime memory metrics
+type MemoryMetrics struct {
+	Alloc      uint64 `json:"alloc_bytes" example:"5242880"`
+	TotalAlloc uint64 `json:"total_alloc_bytes" example:"104857600"`
+	Sys        uint64 `json:"sys_bytes" example:"20971520"`
+	NumGC      uint32 `json:"num_gc" example:"42"`
+}
+
+// DBConnMetrics contains database connection pool metrics
+type DBConnMetrics struct {
+	TotalConns int32 `json:"total_conns" example:"10"`
+	IdleConns  int32 `json:"idle_conns" example:"8"`
+	MaxConns   int32 `json:"max_conns" example:"20"`
+}
+
+// SystemMetricsData contains system-wide metrics
+type SystemMetricsData struct {
+	Memory            MemoryMetrics `json:"memory"`
+	Goroutines        int           `json:"goroutines" example:"50"`
+	DBConnections     DBConnMetrics `json:"db_connections"`
+	RequestsPerSecond float64       `json:"requests_per_second" example:"125.5"`
+}
+
+// SystemMetricsResponse wraps system metrics
+type SystemMetricsResponse struct {
+	Data SystemMetricsData `json:"data"`
+}
+
+// ProvidersStatusResponse wraps provider status list
+type ProvidersStatusResponse struct {
+	Data []ProviderHealth `json:"data"`
+}
+
+// UpdateQuotaRequest represents a request to update tenant quotas
+type UpdateQuotaRequest struct {
+	MaxFaces         *int     `json:"max_faces,omitempty" example:"5000"`
+	MaxRequestsHour  *int     `json:"max_requests_hour,omitempty" example:"10000"`
+	MaxRequestsMonth *int     `json:"max_requests_month,omitempty" example:"1000000"`
+	ThresholdValue   *float64 `json:"threshold_value,omitempty" example:"0.85"`
+}
+
+// UpdateQuotaResponse represents response after quota update
+type UpdateQuotaResponse struct {
+	Message  string `json:"message" example:"quota updated successfully"`
+	TenantID string `json:"tenant_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+}
 // NewSwagger creates and configures the Swagger documentation
 func NewSwagger() *swagno.Swagger {
 	sw := swagno.New(swagno.Config{
@@ -356,6 +459,136 @@ func NewSwagger() *swagno.Swagger {
 				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
 			}),
 			endpoint.WithSecurity([]map[string][]string{{"ApiKeyAuth": {}}}),
+		),
+
+		// Super Admin Endpoints
+
+		// GET /v1/super/tenants - List all tenants
+		endpoint.New(
+			endpoint.GET,
+			"/super/tenants",
+			endpoint.WithTags("Super Admin"),
+			endpoint.WithSummary("List all tenants with metrics"),
+			endpoint.WithDescription("Returns a list of all tenants with summary metrics (requires super admin JWT authentication)"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithParams(
+				parameter.IntParam("limit", parameter.Query, parameter.WithDescription("Maximum number of tenants (default: 50, max: 100)")),
+				parameter.IntParam("offset", parameter.Query, parameter.WithDescription("Offset for pagination (default: 0)")),
+			),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(ListTenantsResponse{}, "200", "Tenants retrieved successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing JWT token"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FORBIDDEN", Message: "Insufficient privileges"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"BearerAuth": {}}}),
+		),
+
+		// GET /v1/super/tenants/:id/metrics - Get tenant detailed metrics
+		endpoint.New(
+			endpoint.GET,
+			"/super/tenants/{id}/metrics",
+			endpoint.WithTags("Super Admin"),
+			endpoint.WithSummary("Get detailed metrics for a tenant"),
+			endpoint.WithDescription("Returns detailed metrics for a specific tenant (requires super admin JWT authentication)"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithParams(
+				parameter.StrParam("id", parameter.Path, parameter.WithDescription("Tenant UUID")),
+			),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(TenantDetailedMetricsResponse{}, "200", "Metrics retrieved successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "Invalid tenant ID format"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing JWT token"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FORBIDDEN", Message: "Insufficient privileges"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"BearerAuth": {}}}),
+		),
+
+		// POST /v1/super/tenants/:id/quota - Update tenant quota
+		endpoint.New(
+			endpoint.POST,
+			"/super/tenants/{id}/quota",
+			endpoint.WithTags("Super Admin"),
+			endpoint.WithSummary("Update tenant quota settings"),
+			endpoint.WithDescription("Updates quota settings for a specific tenant (requires super admin JWT authentication)"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithConsume([]mime.MIME{mime.JSON}),
+			endpoint.WithParams(
+				parameter.StrParam("id", parameter.Path, parameter.WithDescription("Tenant UUID")),
+			),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(UpdateQuotaResponse{}, "200", "Quota updated successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "Invalid request body"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing JWT token"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FORBIDDEN", Message: "Insufficient privileges"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"BearerAuth": {}}}),
+		),
+
+		// GET /v1/super/system/health - System health check
+		endpoint.New(
+			endpoint.GET,
+			"/super/system/health",
+			endpoint.WithTags("Super Admin"),
+			endpoint.WithSummary("Get system health status"),
+			endpoint.WithDescription("Returns health status of all system components (requires super admin JWT authentication)"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(SystemHealthResponse{}, "200", "System is healthy"),
+				response.New(SystemHealthResponse{Status: "degraded"}, "200", "System is degraded"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing JWT token"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FORBIDDEN", Message: "Insufficient privileges"}, "403", "Forbidden"),
+				response.New(SystemHealthResponse{Status: "unhealthy"}, "503", "System is unhealthy"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"BearerAuth": {}}}),
+		),
+
+		// GET /v1/super/system/metrics - System metrics
+		endpoint.New(
+			endpoint.GET,
+			"/super/system/metrics",
+			endpoint.WithTags("Super Admin"),
+			endpoint.WithSummary("Get system-wide metrics"),
+			endpoint.WithDescription("Returns system-wide metrics (memory, goroutines, DB connections, etc.) (requires super admin JWT authentication)"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(SystemMetricsResponse{}, "200", "Metrics retrieved successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing JWT token"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FORBIDDEN", Message: "Insufficient privileges"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"BearerAuth": {}}}),
+		),
+
+		// GET /v1/super/providers - Providers status
+		endpoint.New(
+			endpoint.GET,
+			"/super/providers",
+			endpoint.WithTags("Super Admin"),
+			endpoint.WithSummary("Get face recognition providers status"),
+			endpoint.WithDescription("Returns status of all face recognition providers (requires super admin JWT authentication)"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(ProvidersStatusResponse{}, "200", "Providers status retrieved successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing JWT token"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FORBIDDEN", Message: "Insufficient privileges"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"BearerAuth": {}}}),
 		),
 	}
 

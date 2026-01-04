@@ -178,3 +178,78 @@ type MatchTimeline struct {
 	MatchRate         float64 `json:"match_rate"`
 	AverageMatchScore float64 `json:"average_match_score"`
 }
+
+// Super Admin Types
+
+// TenantWithMetrics represents a tenant with summary metrics
+type TenantWithMetrics struct {
+	ID        string               `json:"id"`
+	Name      string               `json:"name"`
+	PlanType  string               `json:"plan_type"`
+	IsActive  bool                 `json:"is_active"`
+	CreatedAt string               `json:"created_at"`
+	Metrics   TenantMetricsSummary `json:"metrics"`
+}
+
+// TenantMetricsSummary contains aggregated metrics for a tenant
+type TenantMetricsSummary struct {
+	TotalFaces    int64   `json:"total_faces"`
+	TotalRequests int64   `json:"total_requests"`
+	AvgLatencyMs  float64 `json:"avg_latency_ms"`
+	ErrorRate     float64 `json:"error_rate"`
+}
+
+// SystemHealth represents system-wide health status
+type SystemHealth struct {
+	Status    string           `json:"status"`
+	Database  ServiceHealth    `json:"database"`
+	Providers []ProviderHealth `json:"providers"`
+	Uptime    string           `json:"uptime"`
+	Version   string           `json:"version"`
+}
+
+// ServiceHealth represents health of a single service
+type ServiceHealth struct {
+	Status  string `json:"status"`
+	Latency string `json:"latency"`
+	Message string `json:"message,omitempty"`
+}
+
+// ProviderHealth represents health of a face recognition provider
+type ProviderHealth struct {
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Latency string `json:"latency,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+// SystemMetrics contains system-wide metrics
+type SystemMetrics struct {
+	Memory            MemoryMetrics `json:"memory"`
+	Goroutines        int           `json:"goroutines"`
+	DBConnections     DBConnMetrics `json:"db_connections"`
+	RequestsPerSecond float64       `json:"requests_per_second"`
+}
+
+// MemoryMetrics contains Go runtime memory metrics
+type MemoryMetrics struct {
+	Alloc      uint64 `json:"alloc_bytes"`
+	TotalAlloc uint64 `json:"total_alloc_bytes"`
+	Sys        uint64 `json:"sys_bytes"`
+	NumGC      uint32 `json:"num_gc"`
+}
+
+// DBConnMetrics contains database connection pool metrics
+type DBConnMetrics struct {
+	TotalConns int32 `json:"total_conns"`
+	IdleConns  int32 `json:"idle_conns"`
+	MaxConns   int32 `json:"max_conns"`
+}
+
+// UpdateQuotaRequest represents a request to update tenant quotas
+type UpdateQuotaRequest struct {
+	MaxFaces         *int     `json:"max_faces,omitempty"`
+	MaxRequestsHour  *int     `json:"max_requests_hour,omitempty"`
+	MaxRequestsMonth *int     `json:"max_requests_month,omitempty"`
+	ThresholdValue   *float64 `json:"threshold_value,omitempty"`
+}
