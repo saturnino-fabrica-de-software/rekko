@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -11,6 +12,18 @@ import (
 
 	"github.com/saturnino-fabrica-de-software/rekko/internal/domain"
 )
+
+// embeddingSize is the standard face recognition embedding dimension
+const embeddingSize = 512
+
+// float32Pool reuses float32 slices to reduce allocations in hot paths
+// Each slice is pre-allocated to embeddingSize (512 float32)
+var float32Pool = sync.Pool{
+	New: func() interface{} {
+		slice := make([]float32, embeddingSize)
+		return &slice
+	},
+}
 
 type FaceRepository struct {
 	pool PgxPool
@@ -33,10 +46,23 @@ func (r *FaceRepository) Create(ctx context.Context, face *domain.Face) error {
 
 	var embedding *pgvector.Vector
 	if len(face.Embedding) > 0 {
-		floats := make([]float32, len(face.Embedding))
+		var floats []float32
+
+		// Use pool for standard embedding size (zero-allocation path)
+		// For non-standard sizes (tests), allocate normally
+		if len(face.Embedding) == embeddingSize {
+			floatsPtr := float32Pool.Get().(*[]float32)
+			defer float32Pool.Put(floatsPtr)
+			floats = (*floatsPtr)[:len(face.Embedding)]
+		} else {
+			floats = make([]float32, len(face.Embedding))
+		}
+
+		// Convert float64 to float32
 		for i, v := range face.Embedding {
 			floats[i] = float32(v)
 		}
+
 		vec := pgvector.NewVector(floats)
 		embedding = &vec
 	}
@@ -119,11 +145,24 @@ func (r *FaceRepository) Delete(ctx context.Context, tenantID uuid.UUID, externa
 // SearchByEmbedding searches for similar faces using cosine distance
 // Returns matches above threshold, ordered by similarity (highest first)
 func (r *FaceRepository) SearchByEmbedding(ctx context.Context, tenantID uuid.UUID, embedding []float64, threshold float64, limit int) ([]domain.SearchMatch, error) {
-	// Converter embedding para pgvector
-	floats := make([]float32, len(embedding))
+	var floats []float32
+
+	// Use pool for standard embedding size (zero-allocation hot path)
+	// For non-standard sizes (tests), allocate normally
+	if len(embedding) == embeddingSize {
+		floatsPtr := float32Pool.Get().(*[]float32)
+		defer float32Pool.Put(floatsPtr)
+		floats = (*floatsPtr)[:len(embedding)]
+	} else {
+		floats = make([]float32, len(embedding))
+	}
+
+	// Convert float64 to float32
 	for i, v := range embedding {
 		floats[i] = float32(v)
 	}
+
+	// Create vector
 	vec := pgvector.NewVector(floats)
 
 	// Query usando cosine distance (<=>)

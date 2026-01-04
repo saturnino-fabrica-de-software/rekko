@@ -1,0 +1,2 @@
+-- Drop rate limiting table
+DROP TABLE IF EXISTS rate_limit_counters CASCADE;
