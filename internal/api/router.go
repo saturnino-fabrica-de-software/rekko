@@ -1,19 +1,28 @@
 package api
 
 import (
+	"context"
 	"log/slog"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	swagger "github.com/go-swagno/swagno-fiber/swagger"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/admin"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/docs"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/handler"
+	adminHandler "github.com/saturnino-fabrica-de-software/rekko/internal/api/handler/admin"
+	superHandler "github.com/saturnino-fabrica-de-software/rekko/internal/api/handler/super"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/metrics"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/service"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/webhook"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/ws"
 )
 
 type Dependencies struct {
@@ -23,13 +32,18 @@ type Dependencies struct {
 	VerificationRepo *repository.VerificationRepository
 	FaceProvider     provider.FaceProvider
 	LastUsedWorker   *middleware.LastUsedWorker
+	DB               *pgxpool.Pool
 }
 
 type Router struct {
-	app         *fiber.App
-	logger      *slog.Logger
-	deps        *Dependencies
-	rateLimiter *middleware.RateLimiter
+	app           *fiber.App
+	logger        *slog.Logger
+	deps          *Dependencies
+	rateLimiter   *middleware.RateLimiter
+	wsHub         *ws.Hub
+	webhookWorker *webhook.Worker
+	cancelWorker  context.CancelFunc
+	cancelHub     context.CancelFunc
 }
 
 func NewRouter(logger *slog.Logger, deps *Dependencies) *Router {
@@ -70,6 +84,20 @@ func (r *Router) Setup() {
 
 	// Only configure authenticated routes if dependencies were provided
 	if r.deps != nil {
+		// Initialize WebSocket Hub
+		r.wsHub = ws.NewHub()
+		hubCtx, hubCancel := context.WithCancel(context.Background())
+		r.cancelHub = hubCancel
+		go r.wsHub.Run(hubCtx)
+
+		// Initialize Webhook Service and Worker
+		webhookService := webhook.NewService(r.deps.DB)
+		r.webhookWorker = webhook.NewWorker(r.deps.DB, webhookService, r.logger)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		r.cancelWorker = cancel
+		go r.webhookWorker.Run(ctx)
+
 		// Auth middleware
 		authDeps := middleware.AuthDependencies{
 			TenantRepo:     r.deps.TenantRepo,
@@ -97,7 +125,92 @@ func (r *Router) Setup() {
 		v1.Post("/faces", faceHandler.Register)
 		v1.Post("/faces/verify", faceHandler.Verify)
 		v1.Delete("/faces/:external_id", faceHandler.Delete)
+
+		// WebSocket endpoint
+		v1.Get("/ws", ws.UpgradeMiddleware(), ws.Handler(r.wsHub))
+
+		// Admin routes
+		adminGroup := v1.Group("/admin")
+		r.setupAdminRoutes(adminGroup, webhookService)
+
+		// Super Admin routes (JWT auth)
+		r.setupSuperAdminRoutes(v1)
 	}
+}
+
+func (r *Router) setupAdminRoutes(adminGroup fiber.Router, webhookService *webhook.Service) {
+	// Admin service dependencies
+	metricsRepo := metrics.NewRepository(r.deps.DB)
+	adminService := admin.NewService(metricsRepo, r.deps.DB, r.logger)
+
+	// Admin handlers
+	usageHandler := adminHandler.NewMetricsUsageHandler(adminService, r.logger)
+	performanceHandler := adminHandler.NewMetricsPerformanceHandler(adminService, r.logger)
+	qualityHandler := adminHandler.NewMetricsQualityHandler(adminService, r.logger)
+	webhooksHandler := adminHandler.NewWebhooksHandler(webhookService, r.logger)
+
+	// Metrics group
+	metricsGroup := adminGroup.Group("/metrics")
+
+	// Usage metrics
+	metricsGroup.Get("/faces", usageHandler.GetFacesMetrics)
+	metricsGroup.Get("/operations", usageHandler.GetOperationsMetrics)
+	metricsGroup.Get("/requests", usageHandler.GetRequestsMetrics)
+
+	// Performance metrics
+	metricsGroup.Get("/latency", performanceHandler.GetLatencyMetrics)
+	metricsGroup.Get("/throughput", performanceHandler.GetThroughputMetrics)
+	metricsGroup.Get("/errors", performanceHandler.GetErrorMetrics)
+
+	// Quality metrics
+	metricsGroup.Get("/quality", qualityHandler.GetQualityMetrics)
+	metricsGroup.Get("/confidence", qualityHandler.GetConfidenceMetrics)
+	metricsGroup.Get("/matches", qualityHandler.GetMatchMetrics)
+
+	// Webhooks routes
+	adminGroup.Get("/webhooks", webhooksHandler.List)
+	adminGroup.Post("/webhooks", webhooksHandler.Create)
+	adminGroup.Delete("/webhooks/:id", webhooksHandler.Delete)
+}
+
+func (r *Router) setupSuperAdminRoutes(v1Group fiber.Router) {
+	// Admin service dependencies
+	metricsRepo := metrics.NewRepository(r.deps.DB)
+	adminService := admin.NewService(metricsRepo, r.deps.DB, r.logger)
+
+	// JWT service for super admin authentication
+	jwtService := admin.NewJWTService(
+		"your-secret-key", // TODO: move to config
+		"rekko-api",
+		24*time.Hour,
+	)
+
+	// Super admin group with JWT authentication
+	superGroup := v1Group.Group("/super")
+	superGroup.Use(middleware.AdminAuth(
+		middleware.AdminLevelSuper,
+		middleware.AdminAuthDependencies{
+			JWTService: jwtService,
+			Logger:     r.logger,
+		},
+	))
+
+	// Create super admin handlers
+	superTenantsHandler := superHandler.NewTenantsHandler(adminService, r.logger)
+	superSystemHandler := superHandler.NewSystemHandler(adminService, r.logger)
+	superProvidersHandler := superHandler.NewProvidersHandler(adminService, r.logger)
+
+	// Tenants routes
+	superGroup.Get("/tenants", superTenantsHandler.ListTenants)
+	superGroup.Get("/tenants/:id/metrics", superTenantsHandler.GetTenantMetrics)
+	superGroup.Post("/tenants/:id/quota", superTenantsHandler.UpdateTenantQuota)
+
+	// System routes
+	superGroup.Get("/system/health", superSystemHandler.GetSystemHealth)
+	superGroup.Get("/system/metrics", superSystemHandler.GetSystemMetrics)
+
+	// Providers routes
+	superGroup.Get("/providers", superProvidersHandler.GetProvidersStatus)
 }
 
 func (r *Router) App() *fiber.App {
@@ -109,9 +222,20 @@ func (r *Router) Listen(addr string) error {
 }
 
 func (r *Router) Shutdown() error {
+	// Stop WebSocket hub
+	if r.cancelHub != nil {
+		r.cancelHub()
+	}
+
+	// Stop webhook worker
+	if r.cancelWorker != nil {
+		r.cancelWorker()
+	}
+
 	// Stop rate limiter cleanup goroutine
 	if r.rateLimiter != nil {
 		r.rateLimiter.Stop()
 	}
+
 	return r.app.Shutdown()
 }

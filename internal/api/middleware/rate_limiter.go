@@ -10,14 +10,22 @@ import (
 	"github.com/saturnino-fabrica-de-software/rekko/internal/domain"
 )
 
+// EndpointRateLimit defines rate limit for a specific endpoint
+type EndpointRateLimit struct {
+	Requests int
+	Window   time.Duration
+}
+
 // RateLimiterConfig holds configuration for rate limiting
 type RateLimiterConfig struct {
-	// Max requests per window
+	// Max requests per window (default for all endpoints)
 	Max int
-	// Window duration
+	// Window duration (default for all endpoints)
 	Window time.Duration
 	// Key generator function - returns tenant ID from context
 	KeyGenerator func(c *fiber.Ctx) string
+	// PerEndpoint contains custom rate limits for specific endpoints
+	PerEndpoint map[string]EndpointRateLimit
 }
 
 // DefaultRateLimiterConfig returns default configuration
@@ -32,6 +40,19 @@ func DefaultRateLimiterConfig() RateLimiterConfig {
 			}
 			return tenantID.String()
 		},
+		PerEndpoint: make(map[string]EndpointRateLimit),
+	}
+}
+
+// AdminRateLimits returns rate limits for admin endpoints
+func AdminRateLimits() map[string]EndpointRateLimit {
+	return map[string]EndpointRateLimit{
+		"/v1/admin/metrics":  {Requests: 60, Window: time.Minute},
+		"/v1/admin/alerts":   {Requests: 30, Window: time.Minute},
+		"/v1/admin/export":   {Requests: 10, Window: time.Minute},
+		"/v1/admin/webhooks": {Requests: 20, Window: time.Minute},
+		"/super/tenants":     {Requests: 100, Window: time.Minute},
+		"/super/system":      {Requests: 60, Window: time.Minute},
 	}
 }
 
@@ -42,7 +63,7 @@ type tenantLimiter struct {
 	lastAccess time.Time
 }
 
-// RateLimiter implements per-tenant rate limiting
+// RateLimiter implements per-tenant rate limiting with per-endpoint customization
 type RateLimiter struct {
 	config   RateLimiterConfig
 	limiters map[string]*tenantLimiter
@@ -60,6 +81,9 @@ func NewRateLimiter(config RateLimiterConfig) *RateLimiter {
 	}
 	if config.KeyGenerator == nil {
 		config.KeyGenerator = DefaultRateLimiterConfig().KeyGenerator
+	}
+	if config.PerEndpoint == nil {
+		config.PerEndpoint = make(map[string]EndpointRateLimit)
 	}
 
 	rl := &RateLimiter{
@@ -88,24 +112,37 @@ func (rl *RateLimiter) Handler() fiber.Handler {
 			return c.Next()
 		}
 
+		// Get rate limit for this endpoint (or use default)
+		max := rl.config.Max
+		window := rl.config.Window
+		path := c.Path()
+
+		if endpointLimit, exists := rl.config.PerEndpoint[path]; exists {
+			max = endpointLimit.Requests
+			window = endpointLimit.Window
+		}
+
+		// Composite key: tenant + endpoint
+		compositeKey := key + ":" + path
+
 		now := time.Now()
 
 		rl.mu.Lock()
-		limiter, exists := rl.limiters[key]
+		limiter, exists := rl.limiters[compositeKey]
 
 		if !exists || now.After(limiter.windowEnd) {
 			// Create new window
 			newLimiter := &tenantLimiter{
 				count:      1,
-				windowEnd:  now.Add(rl.config.Window),
+				windowEnd:  now.Add(window),
 				lastAccess: now,
 			}
-			rl.limiters[key] = newLimiter
+			rl.limiters[compositeKey] = newLimiter
 			rl.mu.Unlock()
 
 			// Set rate limit headers
-			c.Set("X-RateLimit-Limit", intToString(rl.config.Max))
-			c.Set("X-RateLimit-Remaining", intToString(rl.config.Max-1))
+			c.Set("X-RateLimit-Limit", intToString(max))
+			c.Set("X-RateLimit-Remaining", intToString(max-1))
 			c.Set("X-RateLimit-Reset", newLimiter.windowEnd.Format(time.RFC3339))
 
 			return c.Next()
@@ -115,12 +152,12 @@ func (rl *RateLimiter) Handler() fiber.Handler {
 		limiter.count++
 		limiter.lastAccess = now
 		count := limiter.count
-		remaining := rl.config.Max - count
+		remaining := max - count
 		windowEnd := limiter.windowEnd
 		rl.mu.Unlock()
 
 		// Set rate limit headers
-		c.Set("X-RateLimit-Limit", intToString(rl.config.Max))
+		c.Set("X-RateLimit-Limit", intToString(max))
 		if remaining < 0 {
 			remaining = 0
 		}
@@ -128,7 +165,7 @@ func (rl *RateLimiter) Handler() fiber.Handler {
 		c.Set("X-RateLimit-Reset", windowEnd.Format(time.RFC3339))
 
 		// Check if rate limit exceeded
-		if count > rl.config.Max {
+		if count > max {
 			c.Set("Retry-After", intToString(int(time.Until(windowEnd).Seconds())))
 			return domain.ErrRateLimitExceeded
 		}
