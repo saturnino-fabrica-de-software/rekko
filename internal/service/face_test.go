@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -35,8 +36,30 @@ func (m *MockFaceRepository) Delete(ctx context.Context, tenantID uuid.UUID, ext
 	return args.Error(0)
 }
 
+func (m *MockFaceRepository) SearchByEmbedding(ctx context.Context, tenantID uuid.UUID, embedding []float64, threshold float64, limit int) ([]domain.SearchMatch, error) {
+	args := m.Called(ctx, tenantID, embedding, threshold, limit)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.SearchMatch), args.Error(1)
+}
+
+func (m *MockFaceRepository) CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	args := m.Called(ctx, tenantID)
+	return args.Int(0), args.Error(1)
+}
+
 type MockVerificationRepository struct {
 	mock.Mock
+}
+
+type MockSearchAuditRepository struct {
+	mock.Mock
+}
+
+func (m *MockSearchAuditRepository) Create(ctx context.Context, audit *domain.SearchAudit) error {
+	args := m.Called(ctx, audit)
+	return args.Error(0)
 }
 
 func (m *MockVerificationRepository) Create(ctx context.Context, v *domain.Verification) error {
@@ -144,6 +167,7 @@ func TestFaceService_Register(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			faceRepo := &MockFaceRepository{}
 			verificationRepo := &MockVerificationRepository{}
+			searchAuditRepo := &MockSearchAuditRepository{}
 			faceProvider := &MockFaceProvider{}
 
 			tt.setupMocks(faceRepo, verificationRepo, faceProvider)
@@ -151,6 +175,7 @@ func TestFaceService_Register(t *testing.T) {
 			svc := &FaceService{
 				faceRepo:         faceRepo,
 				verificationRepo: verificationRepo,
+				searchAuditRepo:  searchAuditRepo,
 				provider:         faceProvider,
 				threshold:        0.8,
 			}
@@ -258,6 +283,7 @@ func TestFaceService_Register_WithLiveness(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			faceRepo := &MockFaceRepository{}
 			verificationRepo := &MockVerificationRepository{}
+			searchAuditRepo := &MockSearchAuditRepository{}
 			faceProvider := &MockFaceProvider{}
 
 			tt.setupMocks(faceRepo, verificationRepo, faceProvider)
@@ -265,6 +291,7 @@ func TestFaceService_Register_WithLiveness(t *testing.T) {
 			svc := &FaceService{
 				faceRepo:         faceRepo,
 				verificationRepo: verificationRepo,
+				searchAuditRepo:  searchAuditRepo,
 				provider:         faceProvider,
 				threshold:        0.8,
 			}
@@ -356,6 +383,7 @@ func TestFaceService_Verify(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			faceRepo := &MockFaceRepository{}
 			verificationRepo := &MockVerificationRepository{}
+			searchAuditRepo := &MockSearchAuditRepository{}
 			faceProvider := &MockFaceProvider{}
 
 			tt.setupMocks(faceRepo, verificationRepo, faceProvider)
@@ -363,6 +391,7 @@ func TestFaceService_Verify(t *testing.T) {
 			svc := &FaceService{
 				faceRepo:         faceRepo,
 				verificationRepo: verificationRepo,
+				searchAuditRepo:  searchAuditRepo,
 				provider:         faceProvider,
 				threshold:        0.8,
 			}
@@ -419,6 +448,7 @@ func TestFaceService_Delete(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			faceRepo := &MockFaceRepository{}
 			verificationRepo := &MockVerificationRepository{}
+			searchAuditRepo := &MockSearchAuditRepository{}
 			faceProvider := &MockFaceProvider{}
 
 			tt.setupMocks(faceRepo, verificationRepo, faceProvider)
@@ -426,6 +456,7 @@ func TestFaceService_Delete(t *testing.T) {
 			svc := &FaceService{
 				faceRepo:         faceRepo,
 				verificationRepo: verificationRepo,
+				searchAuditRepo:  searchAuditRepo,
 				provider:         faceProvider,
 				threshold:        0.8,
 			}
@@ -439,6 +470,371 @@ func TestFaceService_Delete(t *testing.T) {
 			}
 
 			faceRepo.AssertExpectations(t)
+		})
+	}
+}
+
+func TestFaceService_Search(t *testing.T) {
+	tests := []struct {
+		name           string
+		tenant         *domain.Tenant
+		imageBytes     []byte
+		threshold      float64
+		maxResults     int
+		clientIP       string
+		setupMocks     func(*MockFaceRepository, *MockVerificationRepository, *MockFaceProvider, *MockSearchAuditRepository)
+		expectedError  error
+		expectedCount  int
+		validateResult func(*testing.T, *domain.SearchResult)
+	}{
+		{
+			name: "successful search with matches",
+			tenant: &domain.Tenant{
+				ID:   uuid.New(),
+				Name: "Test Tenant",
+				Settings: map[string]interface{}{
+					"search_enabled": true,
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0.85,
+			maxResults: 10,
+			clientIP:   "192.168.1.1",
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-123", []float64{0.1, 0.2, 0.3}, nil)
+
+				faceID1 := uuid.New()
+				faceID2 := uuid.New()
+				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.85, 10).Return([]domain.SearchMatch{
+					{FaceID: faceID1, ExternalID: "user1", Similarity: 0.95, Metadata: map[string]interface{}{"name": "User One"}},
+					{FaceID: faceID2, ExternalID: "user2", Similarity: 0.88, Metadata: map[string]interface{}{"name": "User Two"}},
+				}, nil)
+
+				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(100, nil)
+				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
+			},
+			expectedCount: 2,
+			validateResult: func(t *testing.T, result *domain.SearchResult) {
+				assert.Equal(t, 2, len(result.Matches))
+				assert.Equal(t, 100, result.TotalFaces)
+				assert.GreaterOrEqual(t, result.LatencyMs, int64(0))
+				assert.NotEqual(t, uuid.Nil, result.SearchID)
+				assert.Equal(t, "user1", result.Matches[0].ExternalID)
+				assert.Equal(t, 0.95, result.Matches[0].Similarity)
+			},
+		},
+		{
+			name: "successful search with no matches",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled": true,
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0.95,
+			maxResults: 10,
+			clientIP:   "192.168.1.2",
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-456", []float64{0.5, 0.6, 0.7}, nil)
+				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.95, 10).Return([]domain.SearchMatch{}, nil)
+				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(50, nil)
+				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
+			},
+			expectedCount: 0,
+			validateResult: func(t *testing.T, result *domain.SearchResult) {
+				assert.Equal(t, 0, len(result.Matches))
+				assert.Equal(t, 50, result.TotalFaces)
+			},
+		},
+		{
+			name: "search not enabled",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled": false,
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+			},
+			expectedError: domain.ErrSearchNotEnabled,
+		},
+		{
+			name: "invalid threshold - too high",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled": true,
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  1.5,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+			},
+			expectedError: domain.ErrInvalidThreshold,
+		},
+		{
+			name: "invalid threshold - negative default from tenant",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled":   true,
+					"search_threshold": float64(-0.1),
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+			},
+			expectedError: domain.ErrInvalidThreshold,
+		},
+		{
+			name: "invalid max results - too high",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled": true,
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0.8,
+			maxResults: 100,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+			},
+			expectedError: domain.ErrInvalidMaxResults,
+		},
+		{
+			name: "invalid max results - zero with invalid default",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled":     true,
+					"search_max_results": float64(0),
+					"search_threshold":   0.8,
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0.8,
+			maxResults: 0,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+			},
+			expectedError: domain.ErrInvalidMaxResults,
+		},
+		{
+			name: "use tenant default settings",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled":     true,
+					"search_threshold":   float64(0.9),
+					"search_max_results": float64(5),
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0,
+			maxResults: 0,
+			clientIP:   "192.168.1.3",
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-789", []float64{0.2, 0.3, 0.4}, nil)
+				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.9, 5).Return([]domain.SearchMatch{
+					{FaceID: uuid.New(), ExternalID: "user3", Similarity: 0.92},
+				}, nil)
+				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(25, nil)
+				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
+			},
+			expectedCount: 1,
+			validateResult: func(t *testing.T, result *domain.SearchResult) {
+				assert.Equal(t, 1, len(result.Matches))
+				assert.Equal(t, 25, result.TotalFaces)
+			},
+		},
+		{
+			name: "liveness check required and passed",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled":          true,
+					"search_require_liveness": true,
+					"liveness_threshold":      float64(0.9),
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0.8,
+			maxResults: 10,
+			clientIP:   "192.168.1.4",
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.9).Return(&provider.LivenessResult{
+					IsLive:     true,
+					Confidence: 0.95,
+				}, nil)
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-live", []float64{0.3, 0.4, 0.5}, nil)
+				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.8, 10).Return([]domain.SearchMatch{
+					{FaceID: uuid.New(), ExternalID: "user4", Similarity: 0.85},
+				}, nil)
+				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(10, nil)
+				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
+			},
+			expectedCount: 1,
+		},
+		{
+			name: "liveness check required and failed",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled":          true,
+					"search_require_liveness": true,
+					"liveness_threshold":      float64(0.9),
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0.8,
+			maxResults: 10,
+			clientIP:   "192.168.1.5",
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.9).Return(&provider.LivenessResult{
+					IsLive:     false,
+					Confidence: 0.4,
+				}, nil)
+			},
+			expectedError: domain.ErrLivenessFailed,
+		},
+		{
+			name: "provider fails to index face",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled": true,
+				},
+			},
+			imageBytes: []byte("invalid-image"),
+			threshold:  0.8,
+			maxResults: 10,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("", []float64{}, domain.ErrInvalidImage)
+			},
+			expectedError: domain.ErrInvalidImage,
+		},
+		{
+			name: "repository search fails",
+			tenant: &domain.Tenant{
+				ID: uuid.New(),
+				Settings: map[string]interface{}{
+					"search_enabled": true,
+				},
+			},
+			imageBytes: []byte("fake-image-data"),
+			threshold:  0.8,
+			maxResults: 10,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", []float64{0.1, 0.2}, nil)
+				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.8, 10).Return(nil, errors.New("database connection failed"))
+			},
+			expectedError: errors.New("database connection failed"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			faceRepo := &MockFaceRepository{}
+			verificationRepo := &MockVerificationRepository{}
+			searchAuditRepo := &MockSearchAuditRepository{}
+			faceProvider := &MockFaceProvider{}
+
+			tt.setupMocks(faceRepo, verificationRepo, faceProvider, searchAuditRepo)
+
+			svc := &FaceService{
+				faceRepo:         faceRepo,
+				verificationRepo: verificationRepo,
+				searchAuditRepo:  searchAuditRepo,
+				provider:         faceProvider,
+				threshold:        0.8,
+			}
+
+			result, err := svc.Search(context.Background(), tt.tenant, tt.imageBytes, tt.threshold, tt.maxResults, tt.clientIP)
+
+			if tt.expectedError != nil {
+				assert.Error(t, err)
+				if errors.Is(tt.expectedError, domain.ErrSearchNotEnabled) ||
+					errors.Is(tt.expectedError, domain.ErrInvalidThreshold) ||
+					errors.Is(tt.expectedError, domain.ErrInvalidMaxResults) ||
+					errors.Is(tt.expectedError, domain.ErrLivenessFailed) ||
+					errors.Is(tt.expectedError, domain.ErrInvalidImage) {
+					assert.ErrorIs(t, err, tt.expectedError)
+				} else {
+					assert.Contains(t, err.Error(), "search faces")
+				}
+				assert.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				assert.Equal(t, tt.expectedCount, len(result.Matches))
+
+				if tt.validateResult != nil {
+					tt.validateResult(t, result)
+				}
+			}
+
+			faceRepo.AssertExpectations(t)
+			faceProvider.AssertExpectations(t)
+		})
+	}
+}
+
+func TestFaceService_Search_WithCustomThreshold(t *testing.T) {
+	tenantID := uuid.New()
+
+	tests := []struct {
+		name              string
+		requestThreshold  float64
+		tenantThreshold   float64
+		expectedThreshold float64
+	}{
+		{
+			name:              "use request threshold when provided",
+			requestThreshold:  0.9,
+			tenantThreshold:   0.8,
+			expectedThreshold: 0.9,
+		},
+		{
+			name:              "use tenant default when request is zero",
+			requestThreshold:  0,
+			tenantThreshold:   0.85,
+			expectedThreshold: 0.85,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tenant := &domain.Tenant{
+				ID: tenantID,
+				Settings: map[string]interface{}{
+					"search_enabled":   true,
+					"search_threshold": tt.tenantThreshold,
+				},
+			}
+
+			faceRepo := &MockFaceRepository{}
+			faceProvider := &MockFaceProvider{}
+			searchAuditRepo := &MockSearchAuditRepository{}
+
+			faceProvider.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", []float64{0.1, 0.2}, nil)
+			faceRepo.On("SearchByEmbedding", mock.Anything, tenantID, mock.Anything, tt.expectedThreshold, mock.Anything).Return([]domain.SearchMatch{}, nil)
+			faceRepo.On("CountByTenant", mock.Anything, tenantID).Return(10, nil)
+			searchAuditRepo.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
+
+			svc := &FaceService{
+				faceRepo:        faceRepo,
+				searchAuditRepo: searchAuditRepo,
+				provider:        faceProvider,
+				threshold:       0.8,
+			}
+
+			_, err := svc.Search(context.Background(), tenant, []byte("image"), tt.requestThreshold, 10, "127.0.0.1")
+
+			require.NoError(t, err)
+			faceRepo.AssertExpectations(t)
+			faceProvider.AssertExpectations(t)
 		})
 	}
 }

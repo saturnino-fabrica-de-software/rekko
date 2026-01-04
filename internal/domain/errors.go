@@ -146,4 +146,29 @@ var (
 		Message:    "Request validation failed",
 		StatusCode: 422,
 	}
+
+	// Search errors
+	ErrSearchNotEnabled = &AppError{
+		Code:       "SEARCH_NOT_ENABLED",
+		Message:    "Face search is not enabled for this tenant",
+		StatusCode: 403,
+	}
+
+	ErrSearchRateLimitExceeded = &AppError{
+		Code:       "SEARCH_RATE_LIMIT_EXCEEDED",
+		Message:    "Search rate limit exceeded, try again later",
+		StatusCode: 429,
+	}
+
+	ErrInvalidThreshold = &AppError{
+		Code:       "INVALID_THRESHOLD",
+		Message:    "Threshold must be between 0 and 1",
+		StatusCode: 422,
+	}
+
+	ErrInvalidMaxResults = &AppError{
+		Code:       "INVALID_MAX_RESULTS",
+		Message:    "Max results must be between 1 and 50",
+		StatusCode: 422,
+	}
 )

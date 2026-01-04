@@ -115,3 +115,77 @@ func (r *FaceRepository) Delete(ctx context.Context, tenantID uuid.UUID, externa
 
 	return nil
 }
+
+// SearchByEmbedding searches for similar faces using cosine distance
+// Returns matches above threshold, ordered by similarity (highest first)
+func (r *FaceRepository) SearchByEmbedding(ctx context.Context, tenantID uuid.UUID, embedding []float64, threshold float64, limit int) ([]domain.SearchMatch, error) {
+	// Converter embedding para pgvector
+	floats := make([]float32, len(embedding))
+	for i, v := range embedding {
+		floats[i] = float32(v)
+	}
+	vec := pgvector.NewVector(floats)
+
+	// Query usando cosine distance (<=>)
+	// pgvector retorna distância (0 = idêntico, 2 = oposto)
+	// Convertemos para similarity: 1 - (distance / 2)
+	query := `
+		SELECT id, external_id, metadata,
+		       1 - (embedding <=> $1) / 2 as similarity
+		FROM faces
+		WHERE tenant_id = $2
+		  AND embedding IS NOT NULL
+		  AND 1 - (embedding <=> $1) / 2 >= $3
+		ORDER BY embedding <=> $1
+		LIMIT $4
+	`
+
+	rows, err := r.pool.Query(ctx, query, vec, tenantID, threshold, limit)
+	if err != nil {
+		return nil, fmt.Errorf("search faces by embedding: %w", err)
+	}
+	defer rows.Close()
+
+	var matches []domain.SearchMatch
+	for rows.Next() {
+		var match domain.SearchMatch
+		var metadata map[string]interface{}
+
+		err := rows.Scan(
+			&match.FaceID,
+			&match.ExternalID,
+			&metadata,
+			&match.Similarity,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan search match: %w", err)
+		}
+
+		match.Metadata = metadata
+		matches = append(matches, match)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search results: %w", err)
+	}
+
+	// Retornar slice vazio ao invés de nil se não houver resultados
+	if matches == nil {
+		matches = []domain.SearchMatch{}
+	}
+
+	return matches, nil
+}
+
+// CountByTenant returns the total number of faces for a tenant
+func (r *FaceRepository) CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	query := `SELECT COUNT(*) FROM faces WHERE tenant_id = $1`
+
+	var count int
+	err := r.pool.QueryRow(ctx, query, tenantID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count faces by tenant: %w", err)
+	}
+
+	return count, nil
+}

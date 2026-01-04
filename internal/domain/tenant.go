@@ -43,6 +43,11 @@ type TenantSettings struct {
 	MaxFacesPerUser       int     `json:"max_faces_per_user"`
 	RequireLiveness       bool    `json:"require_liveness"`
 	LivenessThreshold     float64 `json:"liveness_threshold"`
+	SearchEnabled         bool    `json:"search_enabled"`
+	SearchRequireLiveness bool    `json:"search_require_liveness"`
+	SearchThreshold       float64 `json:"search_threshold"`
+	SearchMaxResults      int     `json:"search_max_results"`
+	SearchRateLimit       int     `json:"search_rate_limit"`
 }
 
 // DefaultTenantSettings retorna configurações padrão
@@ -52,6 +57,11 @@ func DefaultTenantSettings() TenantSettings {
 		MaxFacesPerUser:       1,
 		RequireLiveness:       false,
 		LivenessThreshold:     0.90,
+		SearchEnabled:         false,
+		SearchRequireLiveness: false,
+		SearchThreshold:       0.85,
+		SearchMaxResults:      10,
+		SearchRateLimit:       30,
 	}
 }
 
