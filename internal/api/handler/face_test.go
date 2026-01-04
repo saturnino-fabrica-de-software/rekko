@@ -26,8 +26,8 @@ type MockFaceService struct {
 	mock.Mock
 }
 
-func (m *MockFaceService) Register(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte) (*domain.Face, error) {
-	args := m.Called(ctx, tenantID, externalID, imageBytes)
+func (m *MockFaceService) Register(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte, requireLiveness bool, livenessThreshold float64) (*domain.Face, error) {
+	args := m.Called(ctx, tenantID, externalID, imageBytes, requireLiveness, livenessThreshold)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -45,6 +45,14 @@ func (m *MockFaceService) Verify(ctx context.Context, tenantID uuid.UUID, extern
 func (m *MockFaceService) Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error {
 	args := m.Called(ctx, tenantID, externalID)
 	return args.Error(0)
+}
+
+func (m *MockFaceService) CheckLiveness(ctx context.Context, imageBytes []byte, threshold float64) (*domain.LivenessResult, error) {
+	args := m.Called(ctx, imageBytes, threshold)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.LivenessResult), args.Error(1)
 }
 
 // Helper to create multipart request
@@ -80,6 +88,19 @@ func createTestApp(handler *FaceHandler, tenantID uuid.UUID) *fiber.App {
 	// Middleware that simulates authentication
 	app.Use(func(c *fiber.Ctx) error {
 		c.Locals(middleware.LocalTenantID, tenantID)
+		c.Locals(middleware.LocalTenant, &domain.Tenant{
+			ID:       tenantID,
+			Name:     "Test Tenant",
+			Slug:     "test-tenant",
+			IsActive: true,
+			Plan:     domain.PlanStarter,
+			Settings: map[string]interface{}{
+				"verification_threshold": 0.8,
+				"max_faces_per_user":     float64(1),
+				"require_liveness":       false,
+				"liveness_threshold":     0.90,
+			},
+		})
 		return c.Next()
 	})
 
@@ -117,7 +138,7 @@ func TestFaceHandler_Register(t *testing.T) {
 			imageContent: make([]byte, 5000),
 			contentType:  "image/jpeg",
 			setupMock: func(m *MockFaceService) {
-				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything).Return(&domain.Face{
+				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything, mock.AnythingOfType("bool"), mock.AnythingOfType("float64")).Return(&domain.Face{
 					ID:           faceID,
 					ExternalID:   "user_001",
 					QualityScore: 0.95,
@@ -148,7 +169,7 @@ func TestFaceHandler_Register(t *testing.T) {
 			imageContent: make([]byte, 5000),
 			contentType:  "image/jpeg",
 			setupMock: func(m *MockFaceService) {
-				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything).Return(nil, domain.ErrFaceExists)
+				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything, mock.AnythingOfType("bool"), mock.AnythingOfType("float64")).Return(nil, domain.ErrFaceExists)
 			},
 			expectedStatus: 409,
 		},
@@ -158,7 +179,7 @@ func TestFaceHandler_Register(t *testing.T) {
 			imageContent: make([]byte, 5000),
 			contentType:  "image/jpeg",
 			setupMock: func(m *MockFaceService) {
-				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything).Return(nil, domain.ErrNoFaceDetected)
+				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything, mock.AnythingOfType("bool"), mock.AnythingOfType("float64")).Return(nil, domain.ErrNoFaceDetected)
 			},
 			expectedStatus: 422,
 		},
@@ -168,7 +189,7 @@ func TestFaceHandler_Register(t *testing.T) {
 			imageContent: make([]byte, 5000),
 			contentType:  "image/jpeg",
 			setupMock: func(m *MockFaceService) {
-				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything).Return(nil, domain.ErrMultipleFaces)
+				m.On("Register", mock.Anything, tenantID, "user_001", mock.Anything, mock.AnythingOfType("bool"), mock.AnythingOfType("float64")).Return(nil, domain.ErrMultipleFaces)
 			},
 			expectedStatus: 422,
 		},
@@ -355,6 +376,130 @@ func TestFaceHandler_Delete(t *testing.T) {
 			resp, err := app.Test(req)
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+
+			mockService.AssertExpectations(t)
+		})
+	}
+}
+
+func TestFaceHandler_CheckLiveness(t *testing.T) {
+	tenantID := uuid.New()
+
+	tests := []struct {
+		name           string
+		imageContent   []byte
+		contentType    string
+		setupMock      func(*MockFaceService)
+		expectedStatus int
+		checkResponse  func(t *testing.T, body []byte)
+	}{
+		{
+			name:         "successful liveness check - live",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			setupMock: func(m *MockFaceService) {
+				m.On("CheckLiveness", mock.Anything, mock.Anything, mock.AnythingOfType("float64")).Return(&domain.LivenessResult{
+					IsLive:     true,
+					Confidence: 0.95,
+					Checks: domain.LivenessChecks{
+						EyesOpen:     true,
+						FacingCamera: true,
+						QualityOK:    true,
+						SingleFace:   true,
+					},
+					Reasons: []string{},
+				}, nil)
+			},
+			expectedStatus: 200,
+			checkResponse: func(t *testing.T, body []byte) {
+				var resp LivenessResponse
+				err := json.Unmarshal(body, &resp)
+				assert.NoError(t, err)
+				assert.True(t, resp.IsLive)
+				assert.Equal(t, 0.95, resp.Confidence)
+				assert.True(t, resp.Checks.EyesOpen)
+				assert.True(t, resp.Checks.FacingCamera)
+				assert.True(t, resp.Checks.QualityOK)
+				assert.True(t, resp.Checks.SingleFace)
+			},
+		},
+		{
+			name:         "successful liveness check - not live",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			setupMock: func(m *MockFaceService) {
+				m.On("CheckLiveness", mock.Anything, mock.Anything, mock.AnythingOfType("float64")).Return(&domain.LivenessResult{
+					IsLive:     false,
+					Confidence: 0.45,
+					Checks: domain.LivenessChecks{
+						EyesOpen:     false,
+						FacingCamera: true,
+						QualityOK:    true,
+						SingleFace:   true,
+					},
+					Reasons: []string{"eyes closed"},
+				}, nil)
+			},
+			expectedStatus: 200,
+			checkResponse: func(t *testing.T, body []byte) {
+				var resp LivenessResponse
+				err := json.Unmarshal(body, &resp)
+				assert.NoError(t, err)
+				assert.False(t, resp.IsLive)
+				assert.Equal(t, 0.45, resp.Confidence)
+				assert.False(t, resp.Checks.EyesOpen)
+				assert.Contains(t, resp.Reasons, "eyes closed")
+			},
+		},
+		{
+			name:         "no face detected",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			setupMock: func(m *MockFaceService) {
+				m.On("CheckLiveness", mock.Anything, mock.Anything, mock.AnythingOfType("float64")).Return(nil, domain.ErrNoFaceDetected)
+			},
+			expectedStatus: 422,
+		},
+		{
+			name:         "multiple faces detected",
+			imageContent: make([]byte, 5000),
+			contentType:  "image/jpeg",
+			setupMock: func(m *MockFaceService) {
+				m.On("CheckLiveness", mock.Anything, mock.Anything, mock.AnythingOfType("float64")).Return(nil, domain.ErrMultipleFaces)
+			},
+			expectedStatus: 422,
+		},
+		{
+			name:           "missing image",
+			imageContent:   nil,
+			contentType:    "image/jpeg",
+			setupMock:      func(m *MockFaceService) {},
+			expectedStatus: 500,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockService := &MockFaceService{}
+			tt.setupMock(mockService)
+
+			handler := NewFaceHandler(mockService)
+			app := createTestApp(handler, tenantID)
+			app.Post("/v1/faces/liveness", handler.CheckLiveness)
+
+			body, contentType, _ := createMultipartRequest("", tt.imageContent, tt.contentType)
+
+			req := httptest.NewRequest("POST", "/v1/faces/liveness", body)
+			req.Header.Set("Content-Type", contentType)
+
+			resp, err := app.Test(req)
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
+
+			if tt.checkResponse != nil {
+				respBody, _ := io.ReadAll(resp.Body)
+				tt.checkResponse(t, respBody)
+			}
 
 			mockService.AssertExpectations(t)
 		})

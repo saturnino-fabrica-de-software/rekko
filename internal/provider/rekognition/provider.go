@@ -510,3 +510,92 @@ func (p *Provider) DeleteCollection(ctx context.Context) error {
 func (p *Provider) GetFaceCount(ctx context.Context) (int64, error) {
 	return p.client.GetCollectionFaceCount(ctx, p.tenantID.String())
 }
+
+// CheckLiveness performs passive liveness detection using AWS Rekognition DetectFaces API
+// Analyzes face attributes to determine if the image contains a live person
+func (p *Provider) CheckLiveness(ctx context.Context, image []byte, threshold float64) (*provider.LivenessResult, error) {
+	if err := validateImage(image); err != nil {
+		return nil, fmt.Errorf("tenant %s: %w", p.tenantID, err)
+	}
+
+	input := &rekognition.DetectFacesInput{
+		Image: &types.Image{
+			Bytes: image,
+		},
+		Attributes: []types.Attribute{types.AttributeAll},
+	}
+
+	output, err := p.client.rekognition.DetectFaces(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: check liveness: %w", p.tenantID, err)
+	}
+
+	singleFace := len(output.FaceDetails) == 1
+
+	result := &provider.LivenessResult{
+		IsLive:     false,
+		Confidence: 0,
+		Checks: provider.LivenessChecks{
+			EyesOpen:     false,
+			FacingCamera: false,
+			QualityOK:    false,
+			SingleFace:   singleFace,
+		},
+	}
+
+	if !singleFace {
+		if len(output.FaceDetails) == 0 {
+			result.Reasons = append(result.Reasons, "no face detected")
+		} else {
+			result.Reasons = append(result.Reasons, "multiple faces detected")
+		}
+		return result, nil
+	}
+
+	face := output.FaceDetails[0]
+
+	eyesOpen := false
+	if face.EyesOpen != nil && face.EyesOpen.Value {
+		eyesOpen = *face.EyesOpen.Confidence > 80
+	}
+	result.Checks.EyesOpen = eyesOpen
+
+	facingCamera := false
+	if face.Pose != nil {
+		yaw := float64(*face.Pose.Yaw)
+		pitch := float64(*face.Pose.Pitch)
+		if yaw > -30 && yaw < 30 && pitch > -20 && pitch < 20 {
+			facingCamera = true
+		}
+	}
+	result.Checks.FacingCamera = facingCamera
+
+	qualityOK := p.calculateQualityScore(face.Quality) >= 0.6
+	result.Checks.QualityOK = qualityOK
+
+	confidence := float64(*face.Confidence) / 100.0
+	if qualityOK {
+		confidence = confidence * p.calculateQualityScore(face.Quality)
+	}
+	result.Confidence = confidence
+
+	isLive := eyesOpen && facingCamera && qualityOK && confidence >= threshold
+	result.IsLive = isLive
+
+	if !isLive {
+		if !eyesOpen {
+			result.Reasons = append(result.Reasons, "eyes not open")
+		}
+		if !facingCamera {
+			result.Reasons = append(result.Reasons, "face not facing camera")
+		}
+		if !qualityOK {
+			result.Reasons = append(result.Reasons, "image quality too low")
+		}
+		if confidence < threshold {
+			result.Reasons = append(result.Reasons, "confidence below threshold")
+		}
+	}
+
+	return result, nil
+}

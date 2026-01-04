@@ -124,6 +124,7 @@ func (r *Router) Setup() {
 		// Face routes
 		v1.Post("/faces", faceHandler.Register)
 		v1.Post("/faces/verify", faceHandler.Verify)
+		v1.Post("/faces/liveness", faceHandler.CheckLiveness)
 		v1.Delete("/faces/:external_id", faceHandler.Delete)
 
 		// WebSocket endpoint

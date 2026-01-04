@@ -71,6 +71,14 @@ func (m *MockFaceProvider) DeleteFace(ctx context.Context, faceID string) error 
 	return args.Error(0)
 }
 
+func (m *MockFaceProvider) CheckLiveness(ctx context.Context, image []byte, threshold float64) (*provider.LivenessResult, error) {
+	args := m.Called(ctx, image, threshold)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*provider.LivenessResult), args.Error(1)
+}
+
 func TestFaceService_Register(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -147,7 +155,121 @@ func TestFaceService_Register(t *testing.T) {
 				threshold:        0.8,
 			}
 
-			face, err := svc.Register(context.Background(), tt.tenantID, tt.externalID, tt.imageBytes)
+			face, err := svc.Register(context.Background(), tt.tenantID, tt.externalID, tt.imageBytes, false, 0.90)
+
+			if tt.wantErr != nil {
+				assert.ErrorIs(t, err, tt.wantErr)
+				assert.Nil(t, face)
+			} else {
+				require.NoError(t, err)
+				assert.NotNil(t, face)
+				assert.Equal(t, tt.externalID, face.ExternalID)
+				assert.Equal(t, tt.tenantID, face.TenantID)
+			}
+
+			faceRepo.AssertExpectations(t)
+			faceProvider.AssertExpectations(t)
+		})
+	}
+}
+
+func TestFaceService_Register_WithLiveness(t *testing.T) {
+	tests := []struct {
+		name              string
+		tenantID          uuid.UUID
+		externalID        string
+		imageBytes        []byte
+		requireLiveness   bool
+		livenessThreshold float64
+		setupMocks        func(*MockFaceRepository, *MockVerificationRepository, *MockFaceProvider)
+		wantErr           error
+	}{
+		{
+			name:              "successful registration with liveness",
+			tenantID:          uuid.New(),
+			externalID:        "user_001",
+			imageBytes:        make([]byte, 5000),
+			requireLiveness:   true,
+			livenessThreshold: 0.90,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
+				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
+					{Confidence: 0.99, QualityScore: 0.95},
+				}, nil)
+				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.90).Return(&provider.LivenessResult{
+					IsLive:     true,
+					Confidence: 0.95,
+					Checks: provider.LivenessChecks{
+						EyesOpen:     true,
+						FacingCamera: true,
+						QualityOK:    true,
+						SingleFace:   true,
+					},
+				}, nil)
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", make([]float64, 512), nil)
+				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
+			},
+			wantErr: nil,
+		},
+		{
+			name:              "liveness check failed - low confidence",
+			tenantID:          uuid.New(),
+			externalID:        "user_001",
+			imageBytes:        make([]byte, 5000),
+			requireLiveness:   true,
+			livenessThreshold: 0.90,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
+				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
+					{Confidence: 0.99, QualityScore: 0.95},
+				}, nil)
+				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.90).Return(&provider.LivenessResult{
+					IsLive:     false,
+					Confidence: 0.70,
+					Reasons:    []string{"possible spoofing"},
+					Checks: provider.LivenessChecks{
+						EyesOpen:     true,
+						FacingCamera: true,
+						QualityOK:    false,
+						SingleFace:   true,
+					},
+				}, nil)
+			},
+			wantErr: domain.ErrLivenessFailed,
+		},
+		{
+			name:              "liveness not required",
+			tenantID:          uuid.New(),
+			externalID:        "user_001",
+			imageBytes:        make([]byte, 5000),
+			requireLiveness:   false,
+			livenessThreshold: 0.90,
+			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
+				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
+					{Confidence: 0.99, QualityScore: 0.95},
+				}, nil)
+				// CheckLiveness should NOT be called
+				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", make([]float64, 512), nil)
+				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			faceRepo := &MockFaceRepository{}
+			verificationRepo := &MockVerificationRepository{}
+			faceProvider := &MockFaceProvider{}
+
+			tt.setupMocks(faceRepo, verificationRepo, faceProvider)
+
+			svc := &FaceService{
+				faceRepo:         faceRepo,
+				verificationRepo: verificationRepo,
+				provider:         faceProvider,
+				threshold:        0.8,
+			}
+
+			face, err := svc.Register(context.Background(), tt.tenantID, tt.externalID, tt.imageBytes, tt.requireLiveness, tt.livenessThreshold)
 
 			if tt.wantErr != nil {
 				assert.ErrorIs(t, err, tt.wantErr)

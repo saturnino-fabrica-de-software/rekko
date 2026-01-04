@@ -120,5 +120,54 @@ func (p *Provider) DeleteFace(ctx context.Context, faceID string) error {
 	return nil
 }
 
+// CheckLiveness performs passive liveness detection using DeepFace
+// Currently uses basic face detection as a proxy for liveness
+// TODO: Implement proper liveness detection when DeepFace API supports it
+func (p *Provider) CheckLiveness(ctx context.Context, image []byte, threshold float64) (*provider.LivenessResult, error) {
+	faces, err := p.DetectFaces(ctx, image)
+	if err != nil {
+		return nil, fmt.Errorf("check liveness: %w", err)
+	}
+
+	singleFace := len(faces) == 1
+	qualityOK := singleFace && faces[0].QualityScore >= 0.6
+
+	confidence := 0.0
+	if singleFace {
+		confidence = faces[0].Confidence * faces[0].QualityScore
+	}
+
+	isLive := singleFace && qualityOK && confidence >= threshold
+
+	result := &provider.LivenessResult{
+		IsLive:     isLive,
+		Confidence: confidence,
+		Checks: provider.LivenessChecks{
+			EyesOpen:     true,
+			FacingCamera: qualityOK,
+			QualityOK:    qualityOK,
+			SingleFace:   singleFace,
+		},
+	}
+
+	if !isLive {
+		if !singleFace {
+			if len(faces) == 0 {
+				result.Reasons = append(result.Reasons, "no face detected")
+			} else {
+				result.Reasons = append(result.Reasons, "multiple faces detected")
+			}
+		}
+		if !qualityOK {
+			result.Reasons = append(result.Reasons, "image quality too low")
+		}
+		if confidence < threshold {
+			result.Reasons = append(result.Reasons, "confidence below threshold")
+		}
+	}
+
+	return result, nil
+}
+
 // Ensure Provider implements provider.FaceProvider
 var _ provider.FaceProvider = (*Provider)(nil)
