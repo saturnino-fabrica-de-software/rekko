@@ -218,6 +218,10 @@ func TestDefaultTenantSettings(t *testing.T) {
 	if settings.RequireLiveness != false {
 		t.Errorf("RequireLiveness = %v, want false", settings.RequireLiveness)
 	}
+
+	if settings.LivenessThreshold != 0.90 {
+		t.Errorf("LivenessThreshold = %v, want 0.90", settings.LivenessThreshold)
+	}
 }
 
 func TestTenantSlugValidation(t *testing.T) {

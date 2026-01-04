@@ -30,3 +30,19 @@ type Verification struct {
 	LatencyMs      int64      `json:"latency_ms"`
 	CreatedAt      time.Time  `json:"created_at"`
 }
+
+// LivenessResult represents the result of a liveness check
+type LivenessResult struct {
+	IsLive     bool           `json:"is_live"`
+	Confidence float64        `json:"confidence"`
+	Reasons    []string       `json:"reasons,omitempty"`
+	Checks     LivenessChecks `json:"checks"`
+}
+
+// LivenessChecks contains individual liveness check results
+type LivenessChecks struct {
+	EyesOpen     bool `json:"eyes_open"`
+	FacingCamera bool `json:"facing_camera"`
+	QualityOK    bool `json:"quality_ok"`
+	SingleFace   bool `json:"single_face"`
+}

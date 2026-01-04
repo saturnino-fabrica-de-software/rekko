@@ -42,6 +42,7 @@ type TenantSettings struct {
 	VerificationThreshold float64 `json:"verification_threshold"`
 	MaxFacesPerUser       int     `json:"max_faces_per_user"`
 	RequireLiveness       bool    `json:"require_liveness"`
+	LivenessThreshold     float64 `json:"liveness_threshold"`
 }
 
 // DefaultTenantSettings retorna configurações padrão
@@ -50,6 +51,7 @@ func DefaultTenantSettings() TenantSettings {
 		VerificationThreshold: 0.8,
 		MaxFacesPerUser:       1,
 		RequireLiveness:       false,
+		LivenessThreshold:     0.90,
 	}
 }
 

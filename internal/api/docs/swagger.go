@@ -24,6 +24,22 @@ type VerifyFaceResponse struct {
 	LatencyMs  int64   `json:"latency_ms" example:"45"`
 }
 
+// LivenessCheckResponse represents the response for liveness check
+type LivenessCheckResponse struct {
+	IsLive     bool               `json:"is_live" example:"true"`
+	Confidence float64            `json:"confidence" example:"0.95"`
+	Checks     LivenessChecksData `json:"checks"`
+	Reasons    []string           `json:"reasons,omitempty" example:"[]"`
+}
+
+// LivenessChecksData represents individual liveness checks
+type LivenessChecksData struct {
+	EyesOpen     bool `json:"eyes_open" example:"true"`
+	FacingCamera bool `json:"facing_camera" example:"true"`
+	QualityOK    bool `json:"quality_ok" example:"true"`
+	SingleFace   bool `json:"single_face" example:"true"`
+}
+
 // ErrorResponse represents a standard error response
 type ErrorResponse struct {
 	Code    string `json:"code" example:"VALIDATION_FAILED"`
@@ -267,7 +283,6 @@ type MatchMetricsResponse struct {
 	Pagination *PaginationMeta   `json:"pagination,omitempty"`
 }
 
-
 // Super Admin Types
 
 // TenantMetricsSummary contains summary metrics for a tenant
@@ -370,6 +385,7 @@ type UpdateQuotaResponse struct {
 	Message  string `json:"message" example:"quota updated successfully"`
 	TenantID string `json:"tenant_id" example:"550e8400-e29b-41d4-a716-446655440000"`
 }
+
 // NewSwagger creates and configures the Swagger documentation
 func NewSwagger() *swagno.Swagger {
 	sw := swagno.New(swagno.Config{
@@ -381,7 +397,29 @@ func NewSwagger() *swagno.Swagger {
 	})
 
 	endpoints := []*endpoint.EndPoint{
-		// Faces endpoints (existing)
+		// Faces endpoints
+
+		// POST /v1/faces/liveness - Check Liveness
+		endpoint.New(
+			endpoint.POST,
+			"/faces/liveness",
+			endpoint.WithTags("Faces"),
+			endpoint.WithSummary("Check if image contains a live person"),
+			endpoint.WithDescription("Performs passive liveness detection on the provided image to verify it's from a live person"),
+			endpoint.WithConsume([]mime.MIME{mime.MIME("multipart/form-data")}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(LivenessCheckResponse{}, "200", "Liveness check completed successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "Invalid image file"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing API key"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "NO_FACE_DETECTED", Message: "No face detected in image"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "MULTIPLE_FACES", Message: "Multiple faces detected, only one allowed"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"ApiKeyAuth": {}}}),
+		),
 
 		// GET /v1/admin/metrics/quality - Quality Metrics
 		endpoint.New(

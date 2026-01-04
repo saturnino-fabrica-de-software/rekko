@@ -66,6 +66,24 @@ func (p *Provider) DeleteFace(ctx context.Context, faceID string) error {
 	return nil
 }
 
+// CheckLiveness performs passive liveness detection (mock returns live)
+func (p *Provider) CheckLiveness(ctx context.Context, image []byte, threshold float64) (*provider.LivenessResult, error) {
+	if len(image) < 1000 {
+		return nil, domain.ErrInvalidImage
+	}
+
+	return &provider.LivenessResult{
+		IsLive:     true,
+		Confidence: 0.95,
+		Checks: provider.LivenessChecks{
+			EyesOpen:     true,
+			FacingCamera: true,
+			QualityOK:    true,
+			SingleFace:   true,
+		},
+	}, nil
+}
+
 // generateEmbedding gera embedding determinístico baseado no hash da imagem
 func generateEmbedding(image []byte) []float64 {
 	hash := sha256.Sum256(image)

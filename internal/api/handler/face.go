@@ -26,9 +26,10 @@ var validImageTypes = map[string]bool{
 
 // FaceService interface for the service
 type FaceService interface {
-	Register(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte) (*domain.Face, error)
+	Register(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte, requireLiveness bool, livenessThreshold float64) (*domain.Face, error)
 	Verify(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte) (*domain.Verification, error)
 	Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error
+	CheckLiveness(ctx context.Context, imageBytes []byte, threshold float64) (*domain.LivenessResult, error)
 }
 
 // FaceHandler handles face-related requests
@@ -57,10 +58,26 @@ type VerifyResponse struct {
 	LatencyMs      int64   `json:"latency_ms"`
 }
 
+// LivenessResponse response for liveness check endpoint
+type LivenessResponse struct {
+	IsLive     bool                   `json:"is_live"`
+	Confidence float64                `json:"confidence"`
+	Checks     LivenessChecksResponse `json:"checks"`
+	Reasons    []string               `json:"reasons,omitempty"`
+}
+
+// LivenessChecksResponse represents individual liveness checks in response
+type LivenessChecksResponse struct {
+	EyesOpen     bool `json:"eyes_open"`
+	FacingCamera bool `json:"facing_camera"`
+	QualityOK    bool `json:"quality_ok"`
+	SingleFace   bool `json:"single_face"`
+}
+
 // Register POST /v1/faces - register a new face
 func (h *FaceHandler) Register(c *fiber.Ctx) error {
-	// 1. Extract tenant_id from context (already authenticated by middleware)
-	tenantID, err := middleware.GetTenantID(c)
+	// 1. Extract tenant from context (already authenticated by middleware)
+	tenant, err := middleware.GetTenant(c)
 	if err != nil {
 		return err
 	}
@@ -77,13 +94,16 @@ func (h *FaceHandler) Register(c *fiber.Ctx) error {
 		return fmt.Errorf("register face: %w", err)
 	}
 
-	// 4. Call service to register
-	face, err := h.service.Register(c.Context(), tenantID, externalID, imageBytes)
+	// 4. Extract liveness settings from tenant
+	settings := extractTenantSettings(tenant)
+
+	// 5. Call service to register
+	face, err := h.service.Register(c.Context(), tenant.ID, externalID, imageBytes, settings.RequireLiveness, settings.LivenessThreshold)
 	if err != nil {
 		return err
 	}
 
-	// 5. Return response
+	// 6. Return response
 	return c.Status(fiber.StatusCreated).JSON(RegisterResponse{
 		FaceID:       face.ID.String(),
 		ExternalID:   face.ExternalID,
@@ -150,6 +170,43 @@ func (h *FaceHandler) Delete(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// CheckLiveness POST /v1/faces/liveness - check if image contains a live person
+func (h *FaceHandler) CheckLiveness(c *fiber.Ctx) error {
+	// 1. Extract tenant from context
+	tenant, err := middleware.GetTenant(c)
+	if err != nil {
+		return err
+	}
+
+	// 2. Extract and validate image
+	imageBytes, err := extractAndValidateImage(c)
+	if err != nil {
+		return fmt.Errorf("check liveness: %w", err)
+	}
+
+	// 3. Get liveness threshold from tenant settings
+	settings := extractTenantSettings(tenant)
+
+	// 4. Call provider to check liveness
+	result, err := h.service.CheckLiveness(c.Context(), imageBytes, settings.LivenessThreshold)
+	if err != nil {
+		return err
+	}
+
+	// 5. Return response
+	return c.JSON(LivenessResponse{
+		IsLive:     result.IsLive,
+		Confidence: result.Confidence,
+		Checks: LivenessChecksResponse{
+			EyesOpen:     result.Checks.EyesOpen,
+			FacingCamera: result.Checks.FacingCamera,
+			QualityOK:    result.Checks.QualityOK,
+			SingleFace:   result.Checks.SingleFace,
+		},
+		Reasons: result.Reasons,
+	})
+}
+
 // extractAndValidateImage extracts and validates the image from the form
 func extractAndValidateImage(c *fiber.Ctx) ([]byte, error) {
 	// 1. Extract file
@@ -188,4 +245,35 @@ func extractAndValidateImage(c *fiber.Ctx) ([]byte, error) {
 	}
 
 	return imageBytes, nil
+}
+
+// extractTenantSettings extracts TenantSettings from tenant Settings map
+func extractTenantSettings(tenant *domain.Tenant) domain.TenantSettings {
+	settings := domain.DefaultTenantSettings()
+
+	if tenant.Settings == nil {
+		return settings
+	}
+
+	// Extract verification_threshold
+	if val, ok := tenant.Settings["verification_threshold"].(float64); ok {
+		settings.VerificationThreshold = val
+	}
+
+	// Extract max_faces_per_user
+	if val, ok := tenant.Settings["max_faces_per_user"].(float64); ok {
+		settings.MaxFacesPerUser = int(val)
+	}
+
+	// Extract require_liveness
+	if val, ok := tenant.Settings["require_liveness"].(bool); ok {
+		settings.RequireLiveness = val
+	}
+
+	// Extract liveness_threshold
+	if val, ok := tenant.Settings["liveness_threshold"].(float64); ok {
+		settings.LivenessThreshold = val
+	}
+
+	return settings
 }

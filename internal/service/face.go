@@ -46,7 +46,7 @@ func (s *FaceService) WithThreshold(threshold float64) *FaceService {
 	return s
 }
 
-func (s *FaceService) Register(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte) (*domain.Face, error) {
+func (s *FaceService) Register(ctx context.Context, tenantID uuid.UUID, externalID string, imageBytes []byte, requireLiveness bool, livenessThreshold float64) (*domain.Face, error) {
 	detectedFaces, err := s.provider.DetectFaces(ctx, imageBytes)
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: detect faces: %w", tenantID, err)
@@ -58,6 +58,18 @@ func (s *FaceService) Register(ctx context.Context, tenantID uuid.UUID, external
 
 	if len(detectedFaces) > 1 {
 		return nil, domain.ErrMultipleFaces
+	}
+
+	// Check liveness if required
+	if requireLiveness {
+		livenessResult, err := s.provider.CheckLiveness(ctx, imageBytes, livenessThreshold)
+		if err != nil {
+			return nil, fmt.Errorf("tenant %s: check liveness: %w", tenantID, err)
+		}
+
+		if !livenessResult.IsLive || livenessResult.Confidence < livenessThreshold {
+			return nil, domain.ErrLivenessFailed
+		}
 	}
 
 	_, embedding, err := s.provider.IndexFace(ctx, imageBytes)
@@ -142,4 +154,27 @@ func (s *FaceService) Delete(ctx context.Context, tenantID uuid.UUID, externalID
 	}
 
 	return nil
+}
+
+func (s *FaceService) CheckLiveness(ctx context.Context, imageBytes []byte, threshold float64) (*domain.LivenessResult, error) {
+	// Call provider to check liveness
+	providerResult, err := s.provider.CheckLiveness(ctx, imageBytes, threshold)
+	if err != nil {
+		return nil, fmt.Errorf("check liveness: %w", err)
+	}
+
+	// Convert provider result to domain result
+	result := &domain.LivenessResult{
+		IsLive:     providerResult.IsLive,
+		Confidence: providerResult.Confidence,
+		Reasons:    providerResult.Reasons,
+		Checks: domain.LivenessChecks{
+			EyesOpen:     providerResult.Checks.EyesOpen,
+			FacingCamera: providerResult.Checks.FacingCamera,
+			QualityOK:    providerResult.Checks.QualityOK,
+			SingleFace:   providerResult.Checks.SingleFace,
+		},
+	}
+
+	return result, nil
 }
