@@ -1,4 +1,5 @@
 # Binaries
+/api
 bin/
 *.exe
 *.exe~
@@ -15,6 +16,7 @@ coverage.html
 
 # Dependency directories
 vendor/
+node_modules/
 
 # IDE
 .idea/

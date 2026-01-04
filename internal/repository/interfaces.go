@@ -13,6 +13,8 @@ type TenantRepositoryInterface interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error)
 	GetBySlug(ctx context.Context, slug string) (*domain.Tenant, error)
 	GetByAPIKeyHash(ctx context.Context, hash string) (*domain.Tenant, error)
+	GetByPublicKey(ctx context.Context, publicKey string) (*domain.Tenant, error)
+	GetAllowedDomains(ctx context.Context, tenantID uuid.UUID) ([]string, error)
 	Create(ctx context.Context, tenant *domain.Tenant) error
 	Update(ctx context.Context, tenant *domain.Tenant) error
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -41,4 +43,12 @@ type FaceRepositoryInterface interface {
 // SearchAuditRepositoryInterface defines operations for search audit logging
 type SearchAuditRepositoryInterface interface {
 	Create(ctx context.Context, audit *domain.SearchAudit) error
+}
+
+// WidgetSessionRepositoryInterface defines operations for widget session data access
+type WidgetSessionRepositoryInterface interface {
+	Create(ctx context.Context, session *domain.WidgetSession) error
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.WidgetSession, error)
+	DeleteExpired(ctx context.Context) (int64, error)
+	Delete(ctx context.Context, id uuid.UUID) error
 }

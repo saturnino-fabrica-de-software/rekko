@@ -83,39 +83,15 @@ func (r *Router) Setup() {
 	r.app.Get("/health", healthHandler.Health)
 	r.app.Get("/ready", healthHandler.Ready)
 
-	// API v1 group with authentication
+	// API v1 group
 	v1 := r.app.Group("/v1")
 
-	// Only configure authenticated routes if dependencies were provided
+	// Only configure routes if dependencies were provided
 	if r.deps != nil {
-		// Initialize WebSocket Hub
-		r.wsHub = ws.NewHub()
-		hubCtx, hubCancel := context.WithCancel(context.Background())
-		r.cancelHub = hubCancel
-		go r.wsHub.Run(hubCtx)
-
-		// Initialize Webhook Service and Worker
+		// Initialize Webhook Service (needed before widget routes)
 		webhookService := webhook.NewService(r.deps.DB, r.logger)
-		r.webhookWorker = webhook.NewWorker(r.deps.DB, webhookService, r.logger)
 
-		ctx, cancel := context.WithCancel(context.Background())
-		r.cancelWorker = cancel
-		go r.webhookWorker.Run(ctx)
-
-		// Auth middleware
-		authDeps := middleware.AuthDependencies{
-			TenantRepo:     r.deps.TenantRepo,
-			APIKeyRepo:     r.deps.APIKeyRepo,
-			Logger:         r.logger,
-			LastUsedWorker: r.deps.LastUsedWorker,
-		}
-		v1.Use(middleware.Auth(authDeps))
-
-		// Rate limiting (per tenant) - must come after auth to have tenant context
-		r.rateLimiter = middleware.NewRateLimiter(middleware.DefaultRateLimiterConfig())
-		v1.Use(r.rateLimiter.Handler())
-
-		// Usage repository (needed for both FaceHandler and UsageService)
+		// Usage repository (needed for widget and face handlers)
 		usageRepo := usage.NewRepository(r.deps.DB)
 
 		// Search audit repository
@@ -124,7 +100,7 @@ func (r *Router) Setup() {
 		// Rate limiter for search endpoint
 		searchRateLimiter := ratelimit.NewRateLimiter(r.deps.DB, time.Minute)
 
-		// Face service
+		// Face service (needed for widget)
 		faceService := service.NewFaceService(
 			r.deps.FaceRepo,
 			r.deps.VerificationRepo,
@@ -133,15 +109,45 @@ func (r *Router) Setup() {
 			searchRateLimiter,
 		)
 
+		// Widget routes (no API Key auth, uses public_key)
+		r.setupWidgetRoutes(v1, faceService, usageRepo, webhookService)
+		// Initialize WebSocket Hub
+		r.wsHub = ws.NewHub()
+		hubCtx, hubCancel := context.WithCancel(context.Background())
+		r.cancelHub = hubCancel
+		go r.wsHub.Run(hubCtx)
+
+		// Initialize Webhook Worker
+		r.webhookWorker = webhook.NewWorker(r.deps.DB, webhookService, r.logger)
+		ctx, cancel := context.WithCancel(context.Background())
+		r.cancelWorker = cancel
+		go r.webhookWorker.Run(ctx)
+
+		// Authenticated routes group
+		authedV1 := v1.Group("")
+
+		// Auth middleware
+		authDeps := middleware.AuthDependencies{
+			TenantRepo:     r.deps.TenantRepo,
+			APIKeyRepo:     r.deps.APIKeyRepo,
+			Logger:         r.logger,
+			LastUsedWorker: r.deps.LastUsedWorker,
+		}
+		authedV1.Use(middleware.Auth(authDeps))
+
+		// Rate limiting (per tenant) - must come after auth to have tenant context
+		r.rateLimiter = middleware.NewRateLimiter(middleware.DefaultRateLimiterConfig())
+		authedV1.Use(r.rateLimiter.Handler())
+
 		// Face handler with usage tracking
 		faceHandler := handler.NewFaceHandler(faceService, usageRepo, webhookService, r.logger)
 
-		// Face routes
-		v1.Post("/faces", faceHandler.Register)
-		v1.Post("/faces/verify", faceHandler.Verify)
-		v1.Post("/faces/search", faceHandler.Search)
-		v1.Post("/faces/liveness", faceHandler.CheckLiveness)
-		v1.Delete("/faces/:external_id", faceHandler.Delete)
+		// Face routes (authenticated)
+		authedV1.Post("/faces", faceHandler.Register)
+		authedV1.Post("/faces/verify", faceHandler.Verify)
+		authedV1.Post("/faces/search", faceHandler.Search)
+		authedV1.Post("/faces/liveness", faceHandler.CheckLiveness)
+		authedV1.Delete("/faces/:external_id", faceHandler.Delete)
 
 		// Usage service
 		pgCache := cache.NewPGCache(r.deps.DB)
@@ -151,8 +157,8 @@ func (r *Router) Setup() {
 		// Usage handler
 		usageHandler := handler.NewUsageHandler(usageService, r.logger)
 
-		// Usage routes
-		v1.Get("/usage", usageHandler.GetUsage)
+		// Usage routes (authenticated)
+		authedV1.Get("/usage", usageHandler.GetUsage)
 
 		// Start usage quota check worker (every 5 minutes)
 		usageWorker := usage.NewWorker(usageService, usageRepo, r.logger, 5*time.Minute)
@@ -160,14 +166,14 @@ func (r *Router) Setup() {
 		r.cancelUsageWorker = usageWorkerCancel
 		go usageWorker.Run(usageWorkerCtx)
 
-		// WebSocket endpoint
-		v1.Get("/ws", ws.UpgradeMiddleware(), ws.Handler(r.wsHub))
+		// WebSocket endpoint (authenticated)
+		authedV1.Get("/ws", ws.UpgradeMiddleware(), ws.Handler(r.wsHub))
 
-		// Admin routes
-		adminGroup := v1.Group("/admin")
+		// Admin routes (authenticated)
+		adminGroup := authedV1.Group("/admin")
 		r.setupAdminRoutes(adminGroup, webhookService)
 
-		// Super Admin routes (JWT auth)
+		// Super Admin routes (JWT auth, different from API Key auth)
 		r.setupSuperAdminRoutes(v1)
 	}
 }
@@ -245,6 +251,27 @@ func (r *Router) setupSuperAdminRoutes(v1Group fiber.Router) {
 
 	// Providers routes
 	superGroup.Get("/providers", superProvidersHandler.GetProvidersStatus)
+}
+
+func (r *Router) setupWidgetRoutes(v1 fiber.Router, faceService *service.FaceService, usageRepo *usage.Repository, webhookService *webhook.Service) {
+	// Widget session repository
+	widgetSessionRepo := repository.NewWidgetSessionRepository(r.deps.DB)
+
+	// Widget service
+	widgetService := service.NewWidgetService(
+		widgetSessionRepo,
+		r.deps.TenantRepo,
+		faceService,
+	)
+
+	// Widget handler
+	widgetHandler := handler.NewWidgetHandler(widgetService, usageRepo, webhookService, r.logger)
+
+	// Widget routes (no API Key auth, uses public_key + session)
+	widgetGroup := v1.Group("/widget")
+	widgetGroup.Post("/session", widgetHandler.CreateSession)
+	widgetGroup.Post("/verify", widgetHandler.Verify)
+	widgetGroup.Post("/register", widgetHandler.Register)
 }
 
 func (r *Router) App() *fiber.App {

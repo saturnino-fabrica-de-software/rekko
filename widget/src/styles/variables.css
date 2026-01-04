@@ -1,0 +1,53 @@
+:root {
+  --rekko-primary-color: #2563eb;
+  --rekko-primary-hover-color: #1d4ed8;
+  --rekko-background-color: rgba(0, 0, 0, 0.75);
+  --rekko-surface-color: #ffffff;
+  --rekko-text-color: #1f2937;
+  --rekko-text-secondary-color: #6b7280;
+  --rekko-border-color: #e5e7eb;
+  --rekko-border-radius: 12px;
+  --rekko-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+
+  --rekko-success-color: #10b981;
+  --rekko-error-color: #ef4444;
+  --rekko-warning-color: #f59e0b;
+
+  --rekko-modal-width: 420px;
+  --rekko-modal-max-height: 90vh;
+
+  --rekko-transition-fast: 150ms ease;
+  --rekko-transition-normal: 250ms ease;
+
+  --rekko-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --rekko-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  --rekko-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  --rekko-shadow-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.rekko-widget {
+  font-family: var(--rekko-font-family);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--rekko-text-color);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.rekko-widget * {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.rekko-widget button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+.rekko-widget button:focus-visible {
+  outline: 2px solid var(--rekko-primary-color);
+  outline-offset: 2px;
+}

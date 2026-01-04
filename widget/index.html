@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rekko Widget - Development</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        padding: 40px;
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin-bottom: 20px;
+      }
+      .buttons {
+        display: flex;
+        gap: 12px;
+        margin-top: 20px;
+      }
+      button {
+        padding: 12px 24px;
+        font-size: 16px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .primary {
+        background: #2563eb;
+        color: white;
+      }
+      .secondary {
+        background: #e5e7eb;
+        color: #1f2937;
+      }
+      .log {
+        margin-top: 40px;
+        padding: 20px;
+        background: #f3f4f6;
+        border-radius: 8px;
+        font-family: monospace;
+        font-size: 14px;
+        max-height: 300px;
+        overflow-y: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Rekko Widget - Development</h1>
+    <p>Test the widget integration below:</p>
+
+    <div class="buttons">
+      <button class="primary" onclick="openVerify()">Verify Face</button>
+      <button class="secondary" onclick="openRegister()">Register Face</button>
+    </div>
+
+    <div class="log" id="log">
+      <div>Events will appear here...</div>
+    </div>
+
+    <script type="module">
+      import { Rekko } from './src/index.ts';
+
+      Rekko.init({
+        publicKey: 'pk_test_development',
+        locale: 'pt-BR',
+        texts: {
+          'pt-BR': {
+            consent: {
+              title: 'Verificação Facial',
+              body: 'Para continuar, precisamos capturar sua face. Seus dados biométricos serão processados de acordo com a LGPD.',
+              accept: 'Aceitar e Continuar',
+              decline: 'Recusar',
+            },
+            camera: {
+              title: 'Posicione seu Rosto',
+              instruction: 'Centralize seu rosto no círculo',
+              positioning: 'Ajuste sua posição...',
+              capturing: 'Capturando...',
+            },
+            processing: {
+              title: 'Processando',
+              message: 'Aguarde enquanto verificamos sua identidade...',
+            },
+            result: {
+              successTitle: 'Verificado!',
+              successMessage: 'Sua identidade foi confirmada com sucesso.',
+              errorTitle: 'Falha na Verificação',
+              errorMessage: 'Não foi possível verificar sua identidade.',
+              retry: 'Tentar Novamente',
+              close: 'Fechar',
+            },
+            errors: {
+              cameraPermission: 'Permissão da câmera negada',
+              cameraNotFound: 'Nenhuma câmera encontrada',
+              cameraError: 'Erro ao acessar a câmera',
+              networkError: 'Erro de conexão',
+              verificationFailed: 'Falha na verificação',
+              registrationFailed: 'Falha no registro',
+            },
+          },
+        },
+        theme: {
+          primaryColor: '#2563eb',
+          borderRadius: '12px',
+        },
+      });
+
+      window.openVerify = () => {
+        log('Opening widget in verify mode...');
+        Rekko.open({
+          mode: 'verify',
+          externalId: 'user-123',
+          onSuccess: (result) => {
+            log(`SUCCESS: ${JSON.stringify(result)}`);
+          },
+          onError: (error) => {
+            log(`ERROR: ${JSON.stringify(error)}`);
+          },
+          onEvent: (event) => {
+            log(`EVENT: ${event.type}`);
+          },
+        });
+      };
+
+      window.openRegister = () => {
+        log('Opening widget in register mode...');
+        Rekko.open({
+          mode: 'register',
+          externalId: 'new-user-456',
+          onSuccess: (result) => {
+            log(`SUCCESS: ${JSON.stringify(result)}`);
+          },
+          onError: (error) => {
+            log(`ERROR: ${JSON.stringify(error)}`);
+          },
+          onEvent: (event) => {
+            log(`EVENT: ${event.type}`);
+          },
+        });
+      };
+
+      function log(message) {
+        const logEl = document.getElementById('log');
+        const time = new Date().toLocaleTimeString();
+        logEl.innerHTML += `<div>[${time}] ${message}</div>`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      log('Rekko initialized successfully');
+    </script>
+  </body>
+</html>

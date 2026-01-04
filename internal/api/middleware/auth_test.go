@@ -62,6 +62,22 @@ func (m *MockTenantRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return args.Error(0)
 }
 
+func (m *MockTenantRepo) GetByPublicKey(ctx context.Context, publicKey string) (*domain.Tenant, error) {
+	args := m.Called(ctx, publicKey)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Tenant), args.Error(1)
+}
+
+func (m *MockTenantRepo) GetAllowedDomains(ctx context.Context, tenantID uuid.UUID) ([]string, error) {
+	args := m.Called(ctx, tenantID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]string), args.Error(1)
+}
+
 // MockAPIKeyRepo is a mock implementation of APIKeyRepositoryInterface
 type MockAPIKeyRepo struct {
 	mock.Mock

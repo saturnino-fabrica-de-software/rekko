@@ -200,3 +200,59 @@ func (r *TenantRepository) Delete(ctx context.Context, id uuid.UUID) error {
 
 	return nil
 }
+
+// GetByPublicKey retrieves a tenant by its public key (for widget authentication)
+func (r *TenantRepository) GetByPublicKey(ctx context.Context, publicKey string) (*domain.Tenant, error) {
+	query := `
+		SELECT id, name, slug, is_active, plan, settings, created_at, updated_at
+		FROM tenants
+		WHERE public_key = $1 AND is_active = true
+	`
+
+	var tenant domain.Tenant
+	err := r.pool.QueryRow(ctx, query, publicKey).Scan(
+		&tenant.ID,
+		&tenant.Name,
+		&tenant.Slug,
+		&tenant.IsActive,
+		&tenant.Plan,
+		&tenant.Settings,
+		&tenant.CreatedAt,
+		&tenant.UpdatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrTenantNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get tenant by public key: %w", err)
+	}
+
+	return &tenant, nil
+}
+
+// GetAllowedDomains retrieves the allowed domains for a tenant
+func (r *TenantRepository) GetAllowedDomains(ctx context.Context, tenantID uuid.UUID) ([]string, error) {
+	query := `
+		SELECT allowed_domains
+		FROM tenants
+		WHERE id = $1
+	`
+
+	var domains []string
+	err := r.pool.QueryRow(ctx, query, tenantID).Scan(&domains)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrTenantNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get allowed domains: %w", err)
+	}
+
+	// Return empty slice instead of nil if no domains configured
+	if domains == nil {
+		domains = []string{}
+	}
+
+	return domains, nil
+}
