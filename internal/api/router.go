@@ -110,7 +110,7 @@ func (r *Router) Setup() {
 		)
 
 		// Widget routes (no API Key auth, uses public_key)
-		r.setupWidgetRoutes(v1, faceService, usageRepo, webhookService)
+		r.setupWidgetRoutes(faceService, usageRepo, webhookService)
 		// Initialize WebSocket Hub
 		r.wsHub = ws.NewHub()
 		hubCtx, hubCancel := context.WithCancel(context.Background())
@@ -253,7 +253,7 @@ func (r *Router) setupSuperAdminRoutes(v1Group fiber.Router) {
 	superGroup.Get("/providers", superProvidersHandler.GetProvidersStatus)
 }
 
-func (r *Router) setupWidgetRoutes(v1 fiber.Router, faceService *service.FaceService, usageRepo *usage.Repository, webhookService *webhook.Service) {
+func (r *Router) setupWidgetRoutes(faceService *service.FaceService, usageRepo *usage.Repository, webhookService *webhook.Service) {
 	// Widget session repository
 	widgetSessionRepo := repository.NewWidgetSessionRepository(r.deps.DB)
 
@@ -268,7 +268,8 @@ func (r *Router) setupWidgetRoutes(v1 fiber.Router, faceService *service.FaceSer
 	widgetHandler := handler.NewWidgetHandler(widgetService, usageRepo, webhookService, r.logger)
 
 	// Widget routes (no API Key auth, uses public_key + session)
-	widgetGroup := v1.Group("/widget")
+	// Created directly on app to avoid v1 auth middleware
+	widgetGroup := r.app.Group("/v1/widget")
 	widgetGroup.Post("/session", widgetHandler.CreateSession)
 	widgetGroup.Post("/verify", widgetHandler.Verify)
 	widgetGroup.Post("/register", widgetHandler.Register)
