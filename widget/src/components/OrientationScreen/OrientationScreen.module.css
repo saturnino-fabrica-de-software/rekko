@@ -1,0 +1,169 @@
+/**
+ * OrientationScreen Styles
+ * Clean, minimal design for pre-camera instructions
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100%;
+  padding: 16px 24px 24px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 320px;
+}
+
+.title {
+  margin: 0 0 4px 0;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--rekko-text, #1f2937);
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0 0 20px 0;
+  font-size: 14px;
+  color: var(--rekko-text-secondary, #9ca3af);
+  text-align: center;
+  font-weight: 400;
+}
+
+.illustration {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 140px;
+  height: 140px;
+  margin-bottom: 24px;
+}
+
+.faceIllustration {
+  width: 100%;
+  height: 100%;
+}
+
+.instructions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  margin-bottom: 28px;
+}
+
+/* OrientationItem styles - minimal text-only design */
+.item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rekko-border, #f3f4f6);
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.checkIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--rekko-primary, #3b82f6);
+}
+
+.itemText {
+  font-size: 14px;
+  color: var(--rekko-text, #4b5563);
+  line-height: 1.4;
+  font-weight: 400;
+}
+
+/* Continue button - elegant text link style */
+.continueButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  color: white;
+  background: var(--rekko-primary, #3b82f6);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: auto;
+}
+
+.continueButton:hover {
+  background: var(--rekko-primary-dark, #2563eb);
+}
+
+.continueButton:active {
+  transform: scale(0.98);
+}
+
+.buttonArrow {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.2s ease;
+}
+
+.continueButton:hover .buttonArrow {
+  transform: translateX(3px);
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .container {
+    padding: 12px 20px 20px;
+  }
+
+  .title {
+    font-size: 20px;
+  }
+
+  .subtitle {
+    font-size: 13px;
+  }
+
+  .illustration {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 20px;
+  }
+
+  .itemText {
+    font-size: 13px;
+  }
+
+  .continueButton {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+}

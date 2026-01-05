@@ -273,6 +273,7 @@ func (r *Router) setupWidgetRoutes(faceService *service.FaceService, usageRepo *
 	widgetGroup.Post("/session", widgetHandler.CreateSession)
 	widgetGroup.Post("/verify", widgetHandler.Verify)
 	widgetGroup.Post("/register", widgetHandler.Register)
+	widgetGroup.Post("/validate", widgetHandler.ValidateLiveness)
 }
 
 func (r *Router) App() *fiber.App {

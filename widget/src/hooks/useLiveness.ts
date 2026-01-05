@@ -1,58 +1,328 @@
-import { useState, useCallback } from 'preact/hooks';
+/**
+ * useLiveness Hook
+ * Manages active liveness detection challenges (turn head, blink, etc.)
+ */
 
-export interface LivenessChecks {
-  faceDetected: boolean;
-  faceCentered: boolean;
-  eyesOpen: boolean;
-  goodLighting: boolean;
+import { useState, useCallback, useRef, useEffect } from 'preact/hooks';
+import type { RefObject } from 'preact';
+import { detectFaces, areModelsLoaded } from '../services/faceDetection';
+
+/**
+ * Available liveness challenges
+ */
+export type LivenessChallenge = 'turn_left' | 'turn_right' | 'blink';
+
+/**
+ * Challenge state
+ */
+export type ChallengeState = 'pending' | 'active' | 'success' | 'failed' | 'timeout';
+
+/**
+ * Challenge result
+ */
+export interface ChallengeResult {
+  challenge: LivenessChallenge;
+  success: boolean;
+  duration: number;
+  frames: string[];
 }
 
-export interface UseLivenessResult {
-  checks: LivenessChecks;
-  isLive: boolean;
-  confidence: number;
-  analyze: (videoElement: HTMLVideoElement) => void;
-  reset: () => void;
+/**
+ * Liveness state
+ */
+export interface LivenessState {
+  isActive: boolean;
+  currentChallenge: LivenessChallenge | null;
+  challengeState: ChallengeState;
+  completedChallenges: ChallengeResult[];
+  timeRemaining: number;
+  attempt: number;
+  progress: number;
 }
 
-const initialChecks: LivenessChecks = {
-  faceDetected: false,
-  faceCentered: false,
-  eyesOpen: false,
-  goodLighting: false,
+/**
+ * Liveness config
+ */
+export interface LivenessConfig {
+  challenges: LivenessChallenge[];
+  timeoutMs: number;
+  maxAttempts: number;
+  turnThreshold: number;
+  blinkFrames: number;
+}
+
+const DEFAULT_CONFIG: LivenessConfig = {
+  challenges: ['turn_right', 'blink'],
+  timeoutMs: 10000,
+  maxAttempts: 3,
+  turnThreshold: 20,
+  blinkFrames: 3,
 };
 
-export function useLiveness(): UseLivenessResult {
-  const [checks, setChecks] = useState<LivenessChecks>(initialChecks);
+export interface UseLivenessOptions {
+  videoRef: RefObject<HTMLVideoElement>;
+  config?: Partial<LivenessConfig>;
+  onChallengeStart?: (challenge: LivenessChallenge) => void;
+  onChallengeComplete?: (result: ChallengeResult) => void;
+  onComplete?: (results: ChallengeResult[]) => void;
+  onFailed?: () => void;
+}
 
-  const analyze = useCallback((_videoElement: HTMLVideoElement) => {
-    // Simplified liveness detection
-    // In production, this would use MediaPipe or similar
-    // For now, we'll simulate positive checks after a short delay
-    // Real implementation would analyze video frames
+export interface UseLivenessReturn {
+  state: LivenessState;
+  start: () => void;
+  stop: () => void;
+  reset: () => void;
+  getFrames: () => string[];
+}
 
-    setChecks({
-      faceDetected: true,
-      faceCentered: true,
-      eyesOpen: true,
-      goodLighting: true,
-    });
+/**
+ * Hook for active liveness detection
+ */
+export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
+  const {
+    videoRef,
+    config: configOverrides,
+    onChallengeStart,
+    onChallengeComplete,
+    onComplete,
+    onFailed,
+  } = options;
+
+  const config = { ...DEFAULT_CONFIG, ...configOverrides };
+
+  const [state, setState] = useState<LivenessState>({
+    isActive: false,
+    currentChallenge: null,
+    challengeState: 'pending',
+    completedChallenges: [],
+    timeRemaining: config.timeoutMs,
+    attempt: 1,
+    progress: 0,
+  });
+
+  const detectionRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const framesRef = useRef<string[]>([]);
+  const startTimeRef = useRef<number>(0);
+  const baseYawRef = useRef<number | null>(null);
+  const blinkCountRef = useRef<number>(0);
+  const eyeOpenRef = useRef<boolean>(true);
+
+  const stopTimers = useCallback(() => {
+    if (detectionRef.current) {
+      clearInterval(detectionRef.current);
+      detectionRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
   }, []);
+
+  const captureFrame = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(video, 0, 0);
+      framesRef.current.push(canvas.toDataURL('image/jpeg', 0.8));
+    }
+  }, [videoRef]);
+
+  const calculateYaw = useCallback((landmarks: {
+    leftEye: { x: number; y: number };
+    rightEye: { x: number; y: number };
+    nose: { x: number; y: number };
+  }) => {
+    const eyeCenter = (landmarks.leftEye.x + landmarks.rightEye.x) / 2;
+    const eyeDistance = Math.abs(landmarks.rightEye.x - landmarks.leftEye.x);
+    const noseOffset = landmarks.nose.x - eyeCenter;
+    return (noseOffset / eyeDistance) * 60;
+  }, []);
+
+  const completeChallenge = useCallback((success: boolean) => {
+    stopTimers();
+
+    const result: ChallengeResult = {
+      challenge: state.currentChallenge!,
+      success,
+      duration: Date.now() - startTimeRef.current,
+      frames: [...framesRef.current],
+    };
+
+    const completed = [...state.completedChallenges, result];
+    const remaining = config.challenges.slice(completed.length);
+
+    onChallengeComplete?.(result);
+
+    if (!success) {
+      if (state.attempt < config.maxAttempts) {
+        setState(prev => ({
+          ...prev,
+          challengeState: 'failed',
+          attempt: prev.attempt + 1,
+        }));
+      } else {
+        setState(prev => ({
+          ...prev,
+          isActive: false,
+          challengeState: 'failed',
+          completedChallenges: completed,
+        }));
+        onFailed?.();
+      }
+      return;
+    }
+
+    if (remaining.length === 0) {
+      setState(prev => ({
+        ...prev,
+        isActive: false,
+        currentChallenge: null,
+        challengeState: 'success',
+        completedChallenges: completed,
+        progress: 100,
+      }));
+      onComplete?.(completed);
+    } else {
+      const nextChallenge = remaining[0];
+      if (nextChallenge) {
+        runChallenge(nextChallenge, completed);
+      }
+    }
+  }, [state, config, onChallengeComplete, onComplete, onFailed, stopTimers]);
+
+  const runChallenge = useCallback((challenge: LivenessChallenge, completed: ChallengeResult[] = []) => {
+    stopTimers();
+    framesRef.current = [];
+    baseYawRef.current = null;
+    blinkCountRef.current = 0;
+    eyeOpenRef.current = true;
+    startTimeRef.current = Date.now();
+
+    setState(prev => ({
+      ...prev,
+      isActive: true,
+      currentChallenge: challenge,
+      challengeState: 'active',
+      completedChallenges: completed,
+      timeRemaining: config.timeoutMs,
+      progress: (completed.length / config.challenges.length) * 100,
+    }));
+
+    onChallengeStart?.(challenge);
+
+    timerRef.current = window.setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const remaining = Math.max(0, config.timeoutMs - elapsed);
+
+      setState(prev => ({ ...prev, timeRemaining: remaining }));
+
+      if (remaining === 0) {
+        completeChallenge(false);
+      }
+    }, 100);
+
+    const detect = async () => {
+      if (!videoRef.current || !areModelsLoaded()) return;
+
+      try {
+        const detection = await detectFaces(videoRef.current);
+        if (!detection.detected || !detection.landmarks) return;
+
+        captureFrame();
+
+        if (challenge === 'turn_left' || challenge === 'turn_right') {
+          const yaw = calculateYaw(detection.landmarks);
+
+          if (baseYawRef.current === null) {
+            baseYawRef.current = yaw;
+            return;
+          }
+
+          const diff = yaw - baseYawRef.current;
+          const threshold = config.turnThreshold;
+
+          if (challenge === 'turn_right' && diff < -threshold) {
+            completeChallenge(true);
+          } else if (challenge === 'turn_left' && diff > threshold) {
+            completeChallenge(true);
+          }
+        }
+
+        if (challenge === 'blink') {
+          const eyeAspect = detection.quality?.eyesVisible ?? true;
+
+          if (eyeOpenRef.current && !eyeAspect) {
+            blinkCountRef.current++;
+          }
+          eyeOpenRef.current = eyeAspect;
+
+          if (blinkCountRef.current >= config.blinkFrames) {
+            completeChallenge(true);
+          }
+        }
+      } catch {
+        // Detection error, continue
+      }
+    };
+
+    detectionRef.current = window.setInterval(detect, 150);
+  }, [config, videoRef, onChallengeStart, captureFrame, calculateYaw, completeChallenge, stopTimers]);
+
+  const start = useCallback(() => {
+    if (state.isActive || config.challenges.length === 0) return;
+    const firstChallenge = config.challenges[0];
+    if (!firstChallenge) return;
+    framesRef.current = [];
+    runChallenge(firstChallenge);
+  }, [state.isActive, config.challenges, runChallenge]);
+
+  const stop = useCallback(() => {
+    stopTimers();
+    setState(prev => ({
+      ...prev,
+      isActive: false,
+      currentChallenge: null,
+      challengeState: 'pending',
+    }));
+  }, [stopTimers]);
 
   const reset = useCallback(() => {
-    setChecks(initialChecks);
-  }, []);
+    stopTimers();
+    framesRef.current = [];
+    baseYawRef.current = null;
+    blinkCountRef.current = 0;
 
-  const passedChecks = Object.values(checks).filter(Boolean).length;
-  const totalChecks = Object.keys(checks).length;
-  const confidence = passedChecks / totalChecks;
-  const isLive = passedChecks === totalChecks;
+    setState({
+      isActive: false,
+      currentChallenge: null,
+      challengeState: 'pending',
+      completedChallenges: [],
+      timeRemaining: config.timeoutMs,
+      attempt: 1,
+      progress: 0,
+    });
+  }, [config.timeoutMs, stopTimers]);
+
+  const getFrames = useCallback(() => [...framesRef.current], []);
+
+  useEffect(() => {
+    return () => stopTimers();
+  }, [stopTimers]);
 
   return {
-    checks,
-    isLive,
-    confidence,
-    analyze,
+    state,
+    start,
+    stop,
     reset,
+    getFrames,
   };
 }
+
+export default useLiveness;

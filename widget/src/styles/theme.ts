@@ -1,6 +1,6 @@
 import type { RekkoTheme } from '@/types';
 
-const CSS_VAR_MAP: Record<keyof RekkoTheme, string> = {
+const CSS_VAR_MAP: Partial<Record<keyof RekkoTheme, string>> = {
   primaryColor: '--rekko-primary-color',
   primaryHoverColor: '--rekko-primary-hover-color',
   backgroundColor: '--rekko-background-color',
@@ -10,6 +10,9 @@ const CSS_VAR_MAP: Record<keyof RekkoTheme, string> = {
   borderColor: '--rekko-border-color',
   borderRadius: '--rekko-border-radius',
   fontFamily: '--rekko-font-family',
+  accentColor: '--rekko-accent-color',
+  successColor: '--rekko-success-color',
+  errorColor: '--rekko-error-color',
 };
 
 export function applyTheme(theme: RekkoTheme | undefined, container: HTMLElement): void {
@@ -25,6 +28,8 @@ export function applyTheme(theme: RekkoTheme | undefined, container: HTMLElement
 
 export function resetTheme(container: HTMLElement): void {
   Object.values(CSS_VAR_MAP).forEach((cssVar) => {
-    container.style.removeProperty(cssVar);
+    if (cssVar) {
+      container.style.removeProperty(cssVar);
+    }
   });
 }

@@ -153,6 +153,28 @@ func (s *WidgetService) Register(ctx context.Context, sessionID uuid.UUID, exter
 	return face, nil
 }
 
+// ValidateLiveness validates liveness for a widget session
+// This is used by the widget to validate active liveness challenges before registration
+func (s *WidgetService) ValidateLiveness(ctx context.Context, sessionID uuid.UUID, imageBytes []byte) (*domain.LivenessResult, error) {
+	// 1. Validate session
+	session, err := s.ValidateSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Get default liveness threshold
+	// Widget uses a standard threshold for liveness validation
+	livenessThreshold := 0.85
+
+	// 3. Call face service to check liveness
+	result, err := s.faceService.CheckLiveness(ctx, imageBytes, livenessThreshold)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: widget validate liveness: %w", session.TenantID, err)
+	}
+
+	return result, nil
+}
+
 // CleanupExpiredSessions removes all expired sessions
 // This should be called periodically (e.g., via cron job)
 func (s *WidgetService) CleanupExpiredSessions(ctx context.Context) (int64, error) {

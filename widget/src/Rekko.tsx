@@ -9,7 +9,7 @@ import type {
 } from '@/types';
 import { applyTheme, resetTheme } from '@/styles/theme';
 
-type WidgetState = 'idle' | 'consent' | 'camera' | 'processing' | 'result';
+type WidgetState = 'idle' | 'consent' | 'orientation' | 'camera' | 'liveness' | 'processing' | 'result';
 
 class RekkoWidget implements RekkoInstance {
   private config: RekkoConfig | null = null;
@@ -70,6 +70,10 @@ class RekkoWidget implements RekkoInstance {
 
   isInitialized(): boolean {
     return this.initialized;
+  }
+
+  version(): string {
+    return '0.2.0';
   }
 
   getConfig(): RekkoConfig | null {

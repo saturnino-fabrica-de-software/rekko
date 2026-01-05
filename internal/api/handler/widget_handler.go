@@ -20,6 +20,7 @@ type WidgetService interface {
 	ValidateSession(ctx context.Context, sessionID uuid.UUID) (*domain.WidgetSession, error)
 	Verify(ctx context.Context, sessionID uuid.UUID, externalID string, imageBytes []byte) (*domain.Verification, error)
 	Register(ctx context.Context, sessionID uuid.UUID, externalID string, imageBytes []byte) (*domain.Face, error)
+	ValidateLiveness(ctx context.Context, sessionID uuid.UUID, imageBytes []byte) (*domain.LivenessResult, error)
 }
 
 // WidgetHandler handles widget-related requests
@@ -67,6 +68,22 @@ type WidgetVerifyRequest struct {
 type WidgetRegisterRequest struct {
 	SessionID  string `json:"session_id"`
 	ExternalID string `json:"external_id"`
+}
+
+// WidgetLivenessResponse response for widget liveness validation
+type WidgetLivenessResponse struct {
+	IsLive     bool                         `json:"is_live"`
+	Confidence float64                      `json:"confidence"`
+	Checks     WidgetLivenessChecksResponse `json:"checks"`
+	Reasons    []string                     `json:"reasons,omitempty"`
+}
+
+// WidgetLivenessChecksResponse represents individual liveness checks
+type WidgetLivenessChecksResponse struct {
+	EyesOpen     bool `json:"eyes_open"`
+	FacingCamera bool `json:"facing_camera"`
+	QualityOK    bool `json:"quality_ok"`
+	SingleFace   bool `json:"single_face"`
 }
 
 // trackUsage increments usage counter asynchronously (best-effort)
@@ -289,5 +306,69 @@ func (h *WidgetHandler) Register(c *fiber.Ctx) error {
 		ExternalID:   face.ExternalID,
 		QualityScore: face.QualityScore,
 		CreatedAt:    face.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	})
+}
+
+// ValidateLiveness POST /v1/widget/validate - validate liveness using widget session
+// @Summary Widget liveness validation
+// @Description Validates that the image contains a live person (anti-spoofing)
+// @Tags widget
+// @Accept multipart/form-data
+// @Produce json
+// @Param session_id formData string true "Widget session ID"
+// @Param image formData file true "Face image"
+// @Success 200 {object} WidgetLivenessResponse
+// @Failure 400 {object} domain.AppError
+// @Failure 401 {object} domain.AppError
+// @Router /v1/widget/validate [post]
+func (h *WidgetHandler) ValidateLiveness(c *fiber.Ctx) error {
+	// 1. Extract session_id from form
+	sessionIDStr := strings.TrimSpace(c.FormValue("session_id"))
+	if sessionIDStr == "" {
+		return domain.ErrValidationFailed.WithError(errors.New("session_id is required"))
+	}
+
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		return domain.ErrValidationFailed.WithError(fmt.Errorf("invalid session_id format: %w", err))
+	}
+
+	// 2. Extract and validate image
+	imageBytes, err := extractAndValidateImage(c)
+	if err != nil {
+		return fmt.Errorf("widget validate liveness: %w", err)
+	}
+
+	// 3. Call service to validate liveness
+	result, err := h.service.ValidateLiveness(c.Context(), sessionID, imageBytes)
+	if err != nil {
+		return err
+	}
+
+	// 4. Get session for tenant_id (for tracking)
+	session, _ := h.service.ValidateSession(c.Context(), sessionID)
+	if session != nil {
+		// 5. Track usage (async)
+		h.trackUsage(session.TenantID, "widget_liveness_checks")
+
+		// 6. Dispatch webhook event (async)
+		h.dispatchWidgetEvent(session.TenantID, "widget.liveness_validated", map[string]interface{}{
+			"is_live":    result.IsLive,
+			"confidence": result.Confidence,
+			"session_id": sessionID.String(),
+		})
+	}
+
+	// 7. Return response
+	return c.JSON(WidgetLivenessResponse{
+		IsLive:     result.IsLive,
+		Confidence: result.Confidence,
+		Checks: WidgetLivenessChecksResponse{
+			EyesOpen:     result.Checks.EyesOpen,
+			FacingCamera: result.Checks.FacingCamera,
+			QualityOK:    result.Checks.QualityOK,
+			SingleFace:   result.Checks.SingleFace,
+		},
+		Reasons: result.Reasons,
 	})
 }

@@ -4,11 +4,16 @@ import styles from './ResultScreen.module.css';
 interface ResultScreenProps {
   texts: LocaleTexts['result'];
   success: boolean;
+  errorMessage?: string;
   onRetry: () => void;
   onClose: () => void;
 }
 
-export function ResultScreen({ texts, success, onRetry, onClose }: ResultScreenProps) {
+export function ResultScreen({ texts, success, errorMessage, onRetry, onClose }: ResultScreenProps) {
+  const displayMessage = success
+    ? texts.successMessage
+    : errorMessage || texts.errorMessage;
+
   return (
     <div class={styles.container}>
       <div class={`${styles.icon} ${success ? styles.success : styles.error}`}>
@@ -19,7 +24,7 @@ export function ResultScreen({ texts, success, onRetry, onClose }: ResultScreenP
         {success ? texts.successTitle : texts.errorTitle}
       </h2>
       <p class={styles.message}>
-        {success ? texts.successMessage : texts.errorMessage}
+        {displayMessage}
       </p>
 
       <div class={styles.buttons}>

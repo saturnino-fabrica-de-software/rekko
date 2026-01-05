@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vladmandic/face-api": "^1.7.15",
     "preact": "^10.19.3"
   },
   "devDependencies": {
@@ -36,7 +37,6 @@
     "vite": "^5.1.0",
     "vitest": "^1.2.0"
   },
-  "peerDependencies": {},
   "browserslist": [
     "last 2 Chrome versions",
     "last 2 Firefox versions",

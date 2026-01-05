@@ -14,6 +14,8 @@ import (
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/api/middleware"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/config"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/provider/deepface"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/provider/mock"
 	"github.com/saturnino-fabrica-de-software/rekko/internal/repository"
 )
@@ -61,9 +63,18 @@ func run() error {
 	faceRepo := repository.NewFaceRepository(pool)
 	verificationRepo := repository.NewVerificationRepository(pool)
 
-	// Create provider (mock for development)
-	faceProvider := mock.New()
-	logger.Info("using mock face provider")
+	// Create face provider based on configuration
+	var faceProvider provider.FaceProvider
+	switch cfg.FaceProvider {
+	case "deepface":
+		dfConfig := deepface.DefaultConfig()
+		dfConfig.BaseURL = cfg.DeepFaceURL
+		faceProvider = deepface.NewProvider(dfConfig)
+		logger.Info("using deepface provider", "url", cfg.DeepFaceURL)
+	default:
+		faceProvider = mock.New()
+		logger.Info("using mock face provider")
+	}
 
 	// Create last used worker for async API key updates
 	lastUsedWorker := middleware.NewLastUsedWorker(

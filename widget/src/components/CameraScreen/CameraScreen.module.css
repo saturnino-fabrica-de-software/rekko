@@ -50,9 +50,57 @@
   transition: border-color var(--rekko-transition-fast), border-style var(--rekko-transition-fast);
 }
 
+.faceGuide.noFace {
+  border-color: rgba(255, 255, 255, 0.3);
+  border-style: dashed;
+}
+
 .faceGuide.detected {
   border-color: var(--rekko-success-color);
   border-style: solid;
+}
+
+.faceGuide.countdown {
+  border-color: var(--rekko-primary-color);
+  border-style: solid;
+  border-width: 4px;
+  animation: pulse 1s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.countdownNumber {
+  font-size: 72px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  animation: countdownPop 1s ease-out;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(var(--rekko-primary-rgb, 0, 217, 255), 0.4);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 15px rgba(var(--rekko-primary-rgb, 0, 217, 255), 0);
+  }
+}
+
+@keyframes countdownPop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .loadingOverlay {

@@ -1,71 +1,220 @@
+/**
+ * ConsentScreen Styles
+ * Clean, professional design with LGPD compliance elements
+ */
+
 .container {
   display: flex;
   flex-direction: column;
   align-items: center;
-  text-align: center;
+  animation: fadeIn 0.35s ease-out;
 }
 
-.icon {
-  width: 72px;
-  height: 72px;
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ==========================================================================
+   CONTENT
+   ========================================================================== */
+
+.content {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, var(--rekko-primary-color) 0%, var(--rekko-primary-hover-color) 100%);
-  border-radius: 50%;
-  color: white;
+  text-align: center;
+  width: 100%;
+}
+
+.iconWrapper {
+  position: relative;
   margin-bottom: 24px;
 }
 
+.iconGlow {
+  position: absolute;
+  inset: -12px;
+  background: var(--rekko-primary-color, #0066FF);
+  border-radius: 24px;
+  opacity: 0.08;
+  filter: blur(16px);
+  animation: pulseGlow 4s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.08; transform: scale(1); }
+  50% { opacity: 0.12; transform: scale(1.08); }
+}
+
+.iconContainer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  background: linear-gradient(145deg, var(--rekko-primary-color, #0066FF), #0052CC);
+  border-radius: 20px;
+  color: white;
+  box-shadow:
+    0 8px 24px rgba(0, 102, 255, 0.25),
+    0 2px 8px rgba(0, 102, 255, 0.15);
+}
+
 .title {
-  font-size: 24px;
+  margin: 0 0 8px;
+  font-size: 22px;
   font-weight: 600;
-  color: var(--rekko-text-color);
-  margin-bottom: 12px;
+  color: var(--rekko-text-color, #0f172a);
+  letter-spacing: -0.025em;
+  line-height: 1.2;
 }
 
 .body {
+  margin: 0 0 24px;
   font-size: 15px;
-  color: var(--rekko-text-secondary-color);
+  color: var(--rekko-text-secondary-color, #64748b);
   line-height: 1.6;
-  margin-bottom: 32px;
-  max-width: 320px;
+  max-width: 280px;
 }
 
-.buttons {
+/* ==========================================================================
+   PRIVACY LINK
+   ========================================================================== */
+
+.privacyLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--rekko-text-secondary-color, #64748b);
+  background: var(--rekko-surface-elevated, #f8fafc);
+  border-radius: 8px;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  margin-bottom: 28px;
+}
+
+.privacyLink:hover {
+  color: var(--rekko-primary-color, #0066FF);
+  background: var(--rekko-primary-light, rgba(0, 102, 255, 0.08));
+}
+
+/* ==========================================================================
+   ACTIONS
+   ========================================================================== */
+
+.actions {
   display: flex;
   flex-direction: column;
   gap: 12px;
   width: 100%;
+  max-width: 300px;
 }
 
 .primaryButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  padding: 14px 24px;
-  font-size: 16px;
-  font-weight: 500;
-  background-color: var(--rekko-primary-color);
-  color: white;
-  border-radius: calc(var(--rekko-border-radius) / 1.5);
-  transition: background-color var(--rekko-transition-fast);
+  height: 52px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff !important;
+  background: #0066FF !important;
+  background-color: #0066FF !important;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  box-shadow:
+    0 4px 12px rgba(0, 102, 255, 0.3),
+    0 1px 3px rgba(0, 102, 255, 0.2);
 }
 
 .primaryButton:hover {
-  background-color: var(--rekko-primary-hover-color);
+  background: #0052CC !important;
+  background-color: #0052CC !important;
+  box-shadow:
+    0 6px 20px rgba(0, 102, 255, 0.35),
+    0 2px 6px rgba(0, 102, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.primaryButton:active {
+  transform: translateY(0);
+  box-shadow:
+    0 2px 8px rgba(0, 102, 255, 0.25),
+    0 1px 2px rgba(0, 102, 255, 0.15);
 }
 
 .secondaryButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  padding: 14px 24px;
-  font-size: 16px;
+  height: 44px;
+  font-size: 14px;
   font-weight: 500;
-  background-color: transparent;
-  color: var(--rekko-text-secondary-color);
-  border-radius: calc(var(--rekko-border-radius) / 1.5);
-  transition: background-color var(--rekko-transition-fast), color var(--rekko-transition-fast);
+  color: var(--rekko-text-secondary-color, #64748b);
+  background: transparent;
+  border-radius: 10px;
+  transition: color 0.15s ease;
 }
 
 .secondaryButton:hover {
-  background-color: var(--rekko-border-color);
-  color: var(--rekko-text-color);
+  color: var(--rekko-text-color, #0f172a);
+}
+
+/* ==========================================================================
+   SECURITY BADGE
+   ========================================================================== */
+
+.securityBadge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--rekko-border-light, #f1f5f9);
+  font-size: 12px;
+  color: var(--rekko-text-tertiary-color, #94a3b8);
+  width: 100%;
+}
+
+.securityBadge svg {
+  color: var(--rekko-success-color, #059669);
+}
+
+/* ==========================================================================
+   RESPONSIVE
+   ========================================================================== */
+
+@media (max-width: 380px) {
+  .iconContainer {
+    width: 64px;
+    height: 64px;
+    border-radius: 16px;
+  }
+
+  .title {
+    font-size: 20px;
+  }
+
+  .body {
+    font-size: 14px;
+  }
+
+  .primaryButton {
+    height: 48px;
+    font-size: 14px;
+  }
 }
