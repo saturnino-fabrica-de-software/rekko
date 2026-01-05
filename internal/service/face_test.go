@@ -111,6 +111,14 @@ func (m *MockFaceProvider) CheckLiveness(ctx context.Context, image []byte, thre
 	return args.Get(0).(*provider.LivenessResult), args.Error(1)
 }
 
+func (m *MockFaceProvider) AnalyzeFace(ctx context.Context, image []byte) (*provider.FaceAnalysis, error) {
+	args := m.Called(ctx, image)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*provider.FaceAnalysis), args.Error(1)
+}
+
 func TestFaceService_Register(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -126,10 +134,13 @@ func TestFaceService_Register(t *testing.T) {
 			externalID: "user_001",
 			imageBytes: make([]byte, 5000),
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
-				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
-					{Confidence: 0.99, QualityScore: 0.95},
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     make([]float64, 512),
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.90,
+					FaceCount:     1,
 				}, nil)
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", make([]float64, 512), nil)
 				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
 			},
 			wantErr: nil,
@@ -140,7 +151,9 @@ func TestFaceService_Register(t *testing.T) {
 			externalID: "user_001",
 			imageBytes: make([]byte, 5000),
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
-				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{}, nil)
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					FaceCount: 0,
+				}, nil)
 			},
 			wantErr: domain.ErrNoFaceDetected,
 		},
@@ -150,8 +163,8 @@ func TestFaceService_Register(t *testing.T) {
 			externalID: "user_001",
 			imageBytes: make([]byte, 5000),
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
-				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
-					{Confidence: 0.99}, {Confidence: 0.95},
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					FaceCount: 2,
 				}, nil)
 			},
 			wantErr: domain.ErrMultipleFaces,
@@ -162,10 +175,13 @@ func TestFaceService_Register(t *testing.T) {
 			externalID: "user_001",
 			imageBytes: make([]byte, 5000),
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
-				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
-					{Confidence: 0.99, QualityScore: 0.95},
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     make([]float64, 512),
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.90,
+					FaceCount:     1,
 				}, nil)
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", make([]float64, 512), nil)
 				fr.On("Create", mock.Anything, mock.Anything).Return(domain.ErrFaceExists)
 			},
 			wantErr: domain.ErrFaceExists,
@@ -226,20 +242,13 @@ func TestFaceService_Register_WithLiveness(t *testing.T) {
 			requireLiveness:   true,
 			livenessThreshold: 0.90,
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
-				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
-					{Confidence: 0.99, QualityScore: 0.95},
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     make([]float64, 512),
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.95,
+					FaceCount:     1,
 				}, nil)
-				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.90).Return(&provider.LivenessResult{
-					IsLive:     true,
-					Confidence: 0.95,
-					Checks: provider.LivenessChecks{
-						EyesOpen:     true,
-						FacingCamera: true,
-						QualityOK:    true,
-						SingleFace:   true,
-					},
-				}, nil)
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", make([]float64, 512), nil)
 				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
 			},
 			wantErr: nil,
@@ -252,19 +261,12 @@ func TestFaceService_Register_WithLiveness(t *testing.T) {
 			requireLiveness:   true,
 			livenessThreshold: 0.90,
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
-				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
-					{Confidence: 0.99, QualityScore: 0.95},
-				}, nil)
-				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.90).Return(&provider.LivenessResult{
-					IsLive:     false,
-					Confidence: 0.70,
-					Reasons:    []string{"possible spoofing"},
-					Checks: provider.LivenessChecks{
-						EyesOpen:     true,
-						FacingCamera: true,
-						QualityOK:    false,
-						SingleFace:   true,
-					},
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     make([]float64, 512),
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.70,
+					FaceCount:     1,
 				}, nil)
 			},
 			wantErr: domain.ErrLivenessFailed,
@@ -277,11 +279,13 @@ func TestFaceService_Register_WithLiveness(t *testing.T) {
 			requireLiveness:   false,
 			livenessThreshold: 0.90,
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
-				fp.On("DetectFaces", mock.Anything, mock.Anything).Return([]provider.DetectedFace{
-					{Confidence: 0.99, QualityScore: 0.95},
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     make([]float64, 512),
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.50,
+					FaceCount:     1,
 				}, nil)
-				// CheckLiveness should NOT be called
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", make([]float64, 512), nil)
 				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
 			},
 			wantErr: nil,
@@ -510,7 +514,13 @@ func TestFaceService_Search(t *testing.T) {
 			maxResults: 10,
 			clientIP:   "192.168.1.1",
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-123", []float64{0.1, 0.2, 0.3}, nil)
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     []float64{0.1, 0.2, 0.3},
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.90,
+					FaceCount:     1,
+				}, nil)
 
 				faceID1 := uuid.New()
 				faceID2 := uuid.New()
@@ -519,13 +529,12 @@ func TestFaceService_Search(t *testing.T) {
 					{FaceID: faceID2, ExternalID: "user2", Similarity: 0.88, Metadata: map[string]interface{}{"name": "User Two"}},
 				}, nil)
 
-				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(100, nil)
 				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
 			},
 			expectedCount: 2,
 			validateResult: func(t *testing.T, result *domain.SearchResult) {
 				assert.Equal(t, 2, len(result.Matches))
-				assert.Equal(t, 100, result.TotalFaces)
+				assert.Equal(t, 0, result.TotalFaces) // TotalFaces removed from hot path
 				assert.GreaterOrEqual(t, result.LatencyMs, int64(0))
 				assert.NotEqual(t, uuid.Nil, result.SearchID)
 				assert.Equal(t, "user1", result.Matches[0].ExternalID)
@@ -545,15 +554,20 @@ func TestFaceService_Search(t *testing.T) {
 			maxResults: 10,
 			clientIP:   "192.168.1.2",
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-456", []float64{0.5, 0.6, 0.7}, nil)
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     []float64{0.5, 0.6, 0.7},
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.90,
+					FaceCount:     1,
+				}, nil)
 				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.95, 10).Return([]domain.SearchMatch{}, nil)
-				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(50, nil)
 				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
 			},
 			expectedCount: 0,
 			validateResult: func(t *testing.T, result *domain.SearchResult) {
 				assert.Equal(t, 0, len(result.Matches))
-				assert.Equal(t, 50, result.TotalFaces)
+				assert.Equal(t, 0, result.TotalFaces) // Removed from hot path
 			},
 		},
 		{
@@ -645,27 +659,32 @@ func TestFaceService_Search(t *testing.T) {
 			maxResults: 0,
 			clientIP:   "192.168.1.3",
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-789", []float64{0.2, 0.3, 0.4}, nil)
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     []float64{0.2, 0.3, 0.4},
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.90,
+					FaceCount:     1,
+				}, nil)
 				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.9, 5).Return([]domain.SearchMatch{
 					{FaceID: uuid.New(), ExternalID: "user3", Similarity: 0.92},
 				}, nil)
-				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(25, nil)
 				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
 			},
 			expectedCount: 1,
 			validateResult: func(t *testing.T, result *domain.SearchResult) {
 				assert.Equal(t, 1, len(result.Matches))
-				assert.Equal(t, 25, result.TotalFaces)
+				assert.Equal(t, 0, result.TotalFaces) // Removed from hot path
 			},
 		},
 		{
-			name: "liveness check required and passed",
+			name: "liveness check required and passed - SecurityMaximum",
 			tenant: &domain.Tenant{
 				ID: uuid.New(),
 				Settings: map[string]interface{}{
-					"search_enabled":          true,
-					"search_require_liveness": true,
-					"liveness_threshold":      float64(0.9),
+					"search_enabled":     true,
+					"security_level":     "maximum",
+					"liveness_threshold": float64(0.9),
 				},
 			},
 			imageBytes: []byte("fake-image-data"),
@@ -673,27 +692,28 @@ func TestFaceService_Search(t *testing.T) {
 			maxResults: 10,
 			clientIP:   "192.168.1.4",
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
-				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.9).Return(&provider.LivenessResult{
-					IsLive:     true,
-					Confidence: 0.95,
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     []float64{0.3, 0.4, 0.5},
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.95,
+					FaceCount:     1,
 				}, nil)
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id-live", []float64{0.3, 0.4, 0.5}, nil)
 				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.8, 10).Return([]domain.SearchMatch{
 					{FaceID: uuid.New(), ExternalID: "user4", Similarity: 0.85},
 				}, nil)
-				fr.On("CountByTenant", mock.Anything, mock.Anything).Return(10, nil)
 				ar.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
 			},
 			expectedCount: 1,
 		},
 		{
-			name: "liveness check required and failed",
+			name: "liveness check required and failed - SecurityMaximum",
 			tenant: &domain.Tenant{
 				ID: uuid.New(),
 				Settings: map[string]interface{}{
-					"search_enabled":          true,
-					"search_require_liveness": true,
-					"liveness_threshold":      float64(0.9),
+					"search_enabled":     true,
+					"security_level":     "maximum",
+					"liveness_threshold": float64(0.9),
 				},
 			},
 			imageBytes: []byte("fake-image-data"),
@@ -701,15 +721,18 @@ func TestFaceService_Search(t *testing.T) {
 			maxResults: 10,
 			clientIP:   "192.168.1.5",
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
-				fp.On("CheckLiveness", mock.Anything, mock.Anything, 0.9).Return(&provider.LivenessResult{
-					IsLive:     false,
-					Confidence: 0.4,
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     []float64{0.3, 0.4, 0.5},
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.4,
+					FaceCount:     1,
 				}, nil)
 			},
 			expectedError: domain.ErrLivenessFailed,
 		},
 		{
-			name: "provider fails to index face",
+			name: "provider fails to analyze face",
 			tenant: &domain.Tenant{
 				ID: uuid.New(),
 				Settings: map[string]interface{}{
@@ -720,7 +743,7 @@ func TestFaceService_Search(t *testing.T) {
 			threshold:  0.8,
 			maxResults: 10,
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("", []float64{}, domain.ErrInvalidImage)
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(nil, domain.ErrInvalidImage)
 			},
 			expectedError: domain.ErrInvalidImage,
 		},
@@ -736,7 +759,13 @@ func TestFaceService_Search(t *testing.T) {
 			threshold:  0.8,
 			maxResults: 10,
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider, ar *MockSearchAuditRepository) {
-				fp.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", []float64{0.1, 0.2}, nil)
+				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     []float64{0.1, 0.2},
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.90,
+					FaceCount:     1,
+				}, nil)
 				fr.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, 0.8, 10).Return(nil, errors.New("database connection failed"))
 			},
 			expectedError: errors.New("database connection failed"),
@@ -835,9 +864,14 @@ func TestFaceService_Search_WithCustomThreshold(t *testing.T) {
 			rateLimiter := &MockRateLimiter{}
 
 			rateLimiter.On("CheckSearchLimit", mock.Anything, tenantID, 30).Return(nil)
-			faceProvider.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", []float64{0.1, 0.2}, nil)
+			faceProvider.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+				Embedding:     []float64{0.1, 0.2},
+				Confidence:    0.99,
+				QualityScore:  0.95,
+				LivenessScore: 0.90,
+				FaceCount:     1,
+			}, nil)
 			faceRepo.On("SearchByEmbedding", mock.Anything, tenantID, mock.Anything, tt.expectedThreshold, mock.Anything).Return([]domain.SearchMatch{}, nil)
-			faceRepo.On("CountByTenant", mock.Anything, tenantID).Return(10, nil)
 			searchAuditRepo.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
 
 			svc := &FaceService{

@@ -222,6 +222,10 @@ func TestDefaultTenantSettings(t *testing.T) {
 	if settings.LivenessThreshold != 0.90 {
 		t.Errorf("LivenessThreshold = %v, want 0.90", settings.LivenessThreshold)
 	}
+
+	if settings.SecurityLevel != SecurityStandard {
+		t.Errorf("SecurityLevel = %v, want %v", settings.SecurityLevel, SecurityStandard)
+	}
 }
 
 func TestTenantSlugValidation(t *testing.T) {
@@ -302,5 +306,120 @@ func TestTenantJSONSerialization(t *testing.T) {
 
 	if tenant.Slug == "" {
 		t.Error("tenant.Slug should not be empty")
+	}
+}
+
+func TestSecurityLevel_IsValid(t *testing.T) {
+	tests := []struct {
+		name  string
+		level SecurityLevel
+		want  bool
+	}{
+		{
+			name:  "valid standard",
+			level: SecurityStandard,
+			want:  true,
+		},
+		{
+			name:  "valid enhanced",
+			level: SecurityEnhanced,
+			want:  true,
+		},
+		{
+			name:  "valid maximum",
+			level: SecurityMaximum,
+			want:  true,
+		},
+		{
+			name:  "invalid empty",
+			level: "",
+			want:  false,
+		},
+		{
+			name:  "invalid custom",
+			level: "custom",
+			want:  false,
+		},
+		{
+			name:  "invalid uppercase",
+			level: "STANDARD",
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.level.IsValid()
+			if got != tt.want {
+				t.Errorf("SecurityLevel.IsValid() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTenant_GetSettings_SecurityLevel(t *testing.T) {
+	tests := []struct {
+		name     string
+		settings map[string]interface{}
+		want     SecurityLevel
+	}{
+		{
+			name:     "no security_level set, should use default",
+			settings: map[string]interface{}{},
+			want:     SecurityStandard,
+		},
+		{
+			name: "standard security level",
+			settings: map[string]interface{}{
+				"security_level": "standard",
+			},
+			want: SecurityStandard,
+		},
+		{
+			name: "enhanced security level",
+			settings: map[string]interface{}{
+				"security_level": "enhanced",
+			},
+			want: SecurityEnhanced,
+		},
+		{
+			name: "maximum security level",
+			settings: map[string]interface{}{
+				"security_level": "maximum",
+			},
+			want: SecurityMaximum,
+		},
+		{
+			name: "invalid security level, should use default",
+			settings: map[string]interface{}{
+				"security_level": "invalid",
+			},
+			want: SecurityStandard,
+		},
+		{
+			name: "wrong type, should use default",
+			settings: map[string]interface{}{
+				"security_level": 123,
+			},
+			want: SecurityStandard,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tenant := Tenant{
+				ID:       uuid.New(),
+				Name:     "Test",
+				Slug:     "test",
+				Plan:     PlanStarter,
+				IsActive: true,
+				Settings: tt.settings,
+			}
+
+			got := tenant.GetSettings()
+			if got.SecurityLevel != tt.want {
+				t.Errorf("Tenant.GetSettings().SecurityLevel = %v, want %v", got.SecurityLevel, tt.want)
+			}
+		})
 	}
 }

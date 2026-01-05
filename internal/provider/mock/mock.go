@@ -84,6 +84,36 @@ func (p *Provider) CheckLiveness(ctx context.Context, image []byte, threshold fl
 	}, nil
 }
 
+// AnalyzeFace performs unified face analysis in a single call (mock implementation)
+// Returns all data from a single analysis: embedding, detection, quality, and liveness
+func (p *Provider) AnalyzeFace(ctx context.Context, image []byte) (*provider.FaceAnalysis, error) {
+	if len(image) < 1000 {
+		return nil, domain.ErrInvalidImage
+	}
+
+	embedding := generateEmbedding(image)
+
+	return &provider.FaceAnalysis{
+		Embedding: embedding,
+		BoundingBox: provider.BoundingBox{
+			X:      0.1,
+			Y:      0.1,
+			Width:  0.8,
+			Height: 0.8,
+		},
+		Confidence:    0.99,
+		QualityScore:  0.95,
+		LivenessScore: 0.95,
+		LivenessChecks: provider.LivenessChecks{
+			SingleFace:   true,
+			QualityOK:    true,
+			FacingCamera: true,
+			EyesOpen:     true,
+		},
+		FaceCount: 1,
+	}, nil
+}
+
 // generateEmbedding gera embedding determinístico baseado no hash da imagem
 func generateEmbedding(image []byte) []float64 {
 	hash := sha256.Sum256(image)

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/saturnino-fabrica-de-software/rekko/internal/domain"
+	"github.com/saturnino-fabrica-de-software/rekko/internal/provider"
 )
 
 func TestFaceService_Search_RateLimiting(t *testing.T) {
@@ -91,14 +92,19 @@ func TestFaceService_Search_RateLimiting(t *testing.T) {
 			rateLimiter := &MockRateLimiter{}
 
 			// Extract settings to get actual limit
-			settings := extractTenantSettings(tt.tenant)
+			settings := tt.tenant.GetSettings()
 			tt.rateLimitMock(rateLimiter, tt.tenant.ID, settings.SearchRateLimit)
 
 			// Only set up provider/repo mocks if rate limit passes
 			if !tt.expectError {
-				faceProvider.On("IndexFace", mock.Anything, mock.Anything).Return("face-id", []float64{0.1, 0.2}, nil)
+				faceProvider.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
+					Embedding:     []float64{0.1, 0.2},
+					Confidence:    0.99,
+					QualityScore:  0.95,
+					LivenessScore: 0.90,
+					FaceCount:     1,
+				}, nil)
 				faceRepo.On("SearchByEmbedding", mock.Anything, tt.tenant.ID, mock.Anything, mock.Anything, mock.Anything).Return([]domain.SearchMatch{}, nil)
-				faceRepo.On("CountByTenant", mock.Anything, tt.tenant.ID).Return(10, nil)
 				searchAuditRepo.On("Create", mock.Anything, mock.Anything).Return(nil).Maybe()
 			}
 
@@ -174,7 +180,6 @@ func TestFaceService_Search_RateLimitCheckedBeforeProviderCall(t *testing.T) {
 	rateLimiter.AssertExpectations(t)
 
 	// Ensure provider was NOT called
-	faceProvider.AssertNotCalled(t, "IndexFace")
-	faceProvider.AssertNotCalled(t, "CheckLiveness")
+	faceProvider.AssertNotCalled(t, "AnalyzeFace")
 	faceRepo.AssertNotCalled(t, "SearchByEmbedding")
 }

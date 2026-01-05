@@ -43,9 +43,15 @@ func BenchmarkFaceService_Search(b *testing.B) {
 	rateLimiter.On("CheckSearchLimit", mock.Anything, tenantID, 30).
 		Return(nil)
 
-	// Mock setup - will be called b.N times
-	faceProvider.On("IndexFace", mock.Anything, mock.Anything).
-		Return("face-id-123", embedding, nil)
+	// Mock setup - will be called b.N times (using AnalyzeFace now for optimization)
+	faceProvider.On("AnalyzeFace", mock.Anything, mock.Anything).
+		Return(&provider.FaceAnalysis{
+			Embedding:     embedding,
+			Confidence:    0.99,
+			QualityScore:  0.95,
+			LivenessScore: 0.90,
+			FaceCount:     1,
+		}, nil)
 
 	// Simulate finding 3 matches in a 50k face database
 	matches := []domain.SearchMatch{
@@ -72,9 +78,6 @@ func BenchmarkFaceService_Search(b *testing.B) {
 	faceRepo.On("SearchByEmbedding", mock.Anything, tenantID, embedding, 0.85, 10).
 		Return(matches, nil)
 
-	faceRepo.On("CountByTenant", mock.Anything, tenantID).
-		Return(50000, nil)
-
 	// Audit is async, may or may not be called depending on goroutine timing
 	searchAuditRepo.On("Create", mock.Anything, mock.Anything).
 		Return(nil).Maybe()
@@ -94,9 +97,7 @@ func BenchmarkFaceService_Search(b *testing.B) {
 		if len(result.Matches) != 3 {
 			b.Fatalf("expected 3 matches, got %d", len(result.Matches))
 		}
-		if result.TotalFaces != 50000 {
-			b.Fatalf("expected 50000 total faces, got %d", result.TotalFaces)
-		}
+		// TotalFaces removed from hot path for performance (now returns 0)
 	}
 
 	b.StopTimer()
@@ -133,8 +134,14 @@ func BenchmarkFaceService_Search_WithAudit(b *testing.B) {
 	rateLimiter.On("CheckSearchLimit", mock.Anything, tenantID, 30).
 		Return(nil)
 
-	faceProvider.On("IndexFace", mock.Anything, mock.Anything).
-		Return("face-id-123", embedding, nil)
+	faceProvider.On("AnalyzeFace", mock.Anything, mock.Anything).
+		Return(&provider.FaceAnalysis{
+			Embedding:     embedding,
+			Confidence:    0.99,
+			QualityScore:  0.95,
+			LivenessScore: 0.90,
+			FaceCount:     1,
+		}, nil)
 
 	matches := []domain.SearchMatch{
 		{
@@ -146,9 +153,6 @@ func BenchmarkFaceService_Search_WithAudit(b *testing.B) {
 
 	faceRepo.On("SearchByEmbedding", mock.Anything, tenantID, mock.Anything, mock.Anything, mock.Anything).
 		Return(matches, nil)
-
-	faceRepo.On("CountByTenant", mock.Anything, tenantID).
-		Return(10000, nil)
 
 	// Explicitly expect audit creation
 	searchAuditRepo.On("Create", mock.Anything, mock.MatchedBy(func(audit *domain.SearchAudit) bool {
@@ -198,15 +202,18 @@ func BenchmarkFaceService_Search_NoMatches(b *testing.B) {
 	rateLimiter.On("CheckSearchLimit", mock.Anything, tenantID, 30).
 		Return(nil)
 
-	faceProvider.On("IndexFace", mock.Anything, mock.Anything).
-		Return("face-id", embedding, nil)
+	faceProvider.On("AnalyzeFace", mock.Anything, mock.Anything).
+		Return(&provider.FaceAnalysis{
+			Embedding:     embedding,
+			Confidence:    0.99,
+			QualityScore:  0.95,
+			LivenessScore: 0.90,
+			FaceCount:     1,
+		}, nil)
 
 	// No matches found
 	faceRepo.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]domain.SearchMatch{}, nil)
-
-	faceRepo.On("CountByTenant", mock.Anything, tenantID).
-		Return(50000, nil)
 
 	searchAuditRepo.On("Create", mock.Anything, mock.Anything).
 		Return(nil).Maybe()
@@ -241,10 +248,10 @@ func BenchmarkFaceService_Search_WithLiveness(b *testing.B) {
 	tenant := &domain.Tenant{
 		ID: tenantID,
 		Settings: map[string]interface{}{
-			"search_enabled":          true,
-			"search_require_liveness": true,
-			"liveness_threshold":      0.9,
-			"search_rate_limit":       float64(30),
+			"search_enabled":     true,
+			"security_level":     "maximum",
+			"liveness_threshold": 0.9,
+			"search_rate_limit":  float64(30),
 		},
 	}
 
@@ -253,29 +260,20 @@ func BenchmarkFaceService_Search_WithLiveness(b *testing.B) {
 	rateLimiter.On("CheckSearchLimit", mock.Anything, tenantID, 30).
 		Return(nil)
 
-	// Liveness check mock
-	faceProvider.On("CheckLiveness", mock.Anything, mock.Anything, 0.9).
-		Return(&provider.LivenessResult{
-			IsLive:     true,
-			Confidence: 0.95,
-			Checks: provider.LivenessChecks{
-				EyesOpen:     true,
-				FacingCamera: true,
-				QualityOK:    true,
-				SingleFace:   true,
-			},
+	// AnalyzeFace now includes liveness data (optimized single call)
+	faceProvider.On("AnalyzeFace", mock.Anything, mock.Anything).
+		Return(&provider.FaceAnalysis{
+			Embedding:     embedding,
+			Confidence:    0.99,
+			QualityScore:  0.95,
+			LivenessScore: 0.95,
+			FaceCount:     1,
 		}, nil)
-
-	faceProvider.On("IndexFace", mock.Anything, mock.Anything).
-		Return("face-id", embedding, nil)
 
 	faceRepo.On("SearchByEmbedding", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return([]domain.SearchMatch{
 			{FaceID: uuid.New(), ExternalID: "user-live", Similarity: 0.93},
 		}, nil)
-
-	faceRepo.On("CountByTenant", mock.Anything, tenantID).
-		Return(10000, nil)
 
 	searchAuditRepo.On("Create", mock.Anything, mock.Anything).
 		Return(nil).Maybe()
@@ -357,13 +355,14 @@ func BenchmarkFaceService_Register(b *testing.B) {
 	tenantID := uuid.New()
 	embedding := generateBenchmarkEmbedding(512)
 
-	faceProvider.On("DetectFaces", mock.Anything, mock.Anything).
-		Return([]provider.DetectedFace{
-			{Confidence: 0.99, QualityScore: 0.95},
+	faceProvider.On("AnalyzeFace", mock.Anything, mock.Anything).
+		Return(&provider.FaceAnalysis{
+			Embedding:     embedding,
+			Confidence:    0.99,
+			QualityScore:  0.95,
+			LivenessScore: 0.9,
+			FaceCount:     1,
 		}, nil)
-
-	faceProvider.On("IndexFace", mock.Anything, mock.Anything).
-		Return("face-id", embedding, nil)
 
 	faceRepo.On("Create", mock.Anything, mock.Anything).
 		Return(nil)
@@ -409,7 +408,7 @@ func BenchmarkExtractTenantSettings(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		settings := extractTenantSettings(tenant)
+		settings := tenant.GetSettings()
 		if settings.SearchThreshold != 0.8 {
 			b.Fatal("incorrect settings extraction")
 		}
@@ -428,7 +427,7 @@ func BenchmarkExtractTenantSettings_Empty(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		settings := extractTenantSettings(tenant)
+		settings := tenant.GetSettings()
 		if settings.SearchThreshold == 0 {
 			b.Fatal("default settings not applied")
 		}

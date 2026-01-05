@@ -21,6 +21,11 @@ type FaceProvider interface {
 	// CheckLiveness performs passive liveness detection on an image
 	// Returns liveness result with confidence and individual checks
 	CheckLiveness(ctx context.Context, image []byte, threshold float64) (*LivenessResult, error)
+
+	// AnalyzeFace performs unified face analysis in a single call
+	// Returns embedding, detection, quality, and passive liveness data
+	// This method is more efficient than calling DetectFaces, IndexFace, and CheckLiveness separately
+	AnalyzeFace(ctx context.Context, image []byte) (*FaceAnalysis, error)
 }
 
 // DetectedFace represents a detected face in the image
@@ -61,4 +66,17 @@ type LivenessChecks struct {
 	FacingCamera bool `json:"facing_camera"`
 	QualityOK    bool `json:"quality_ok"`
 	SingleFace   bool `json:"single_face"`
+}
+
+// FaceAnalysis contains all data from a single face analysis call
+// This unified structure allows providers to return detection, embedding,
+// quality, and liveness data in a single API call, reducing network overhead
+type FaceAnalysis struct {
+	Embedding      []float64      `json:"embedding"`
+	BoundingBox    BoundingBox    `json:"bounding_box"`
+	Confidence     float64        `json:"confidence"`
+	QualityScore   float64        `json:"quality_score"`
+	LivenessScore  float64        `json:"liveness_score"`
+	LivenessChecks LivenessChecks `json:"liveness_checks"`
+	FaceCount      int            `json:"face_count"`
 }
