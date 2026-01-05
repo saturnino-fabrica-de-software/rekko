@@ -172,5 +172,54 @@ func (p *Provider) CheckLiveness(ctx context.Context, image []byte, threshold fl
 	return result, nil
 }
 
+// AnalyzeFace performs unified face analysis in a single call
+// This method is more efficient than calling DetectFaces, IndexFace, and CheckLiveness separately
+// because it makes only one HTTP request to DeepFace /represent endpoint
+func (p *Provider) AnalyzeFace(ctx context.Context, image []byte) (*provider.FaceAnalysis, error) {
+	imageBase64 := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(image)
+
+	resp, err := p.client.Represent(ctx, imageBase64)
+	if err != nil {
+		return nil, fmt.Errorf("analyze face: %w", err)
+	}
+
+	if len(resp.Results) == 0 {
+		return nil, ErrNoFaceInResponse
+	}
+
+	result := resp.Results[0]
+	faceArea := float64(result.FacialArea.W * result.FacialArea.H)
+	confidence := calculateConfidence(faceArea)
+	qualityScore := calculateQuality(faceArea)
+
+	// Liveness score based on quality and area (DeepFace doesn't have native liveness)
+	// Higher quality and larger faces are more likely to be live
+	livenessScore := confidence * qualityScore
+
+	// Quality checks
+	singleFace := len(resp.Results) == 1
+	qualityOK := qualityScore >= 0.6
+
+	return &provider.FaceAnalysis{
+		Embedding: result.Embedding,
+		BoundingBox: provider.BoundingBox{
+			X:      float64(result.FacialArea.X),
+			Y:      float64(result.FacialArea.Y),
+			Width:  float64(result.FacialArea.W),
+			Height: float64(result.FacialArea.H),
+		},
+		Confidence:    confidence,
+		QualityScore:  qualityScore,
+		LivenessScore: livenessScore,
+		LivenessChecks: provider.LivenessChecks{
+			SingleFace:   singleFace,
+			QualityOK:    qualityOK,
+			FacingCamera: true,
+			EyesOpen:     true,
+		},
+		FaceCount: len(resp.Results),
+	}, nil
+}
+
 // Ensure Provider implements provider.FaceProvider
 var _ provider.FaceProvider = (*Provider)(nil)

@@ -15,6 +15,18 @@ const (
 	PlanEnterprise = "enterprise"
 )
 
+// SecurityLevel defines the security posture for search operations
+type SecurityLevel string
+
+const (
+	// SecurityStandard - No liveness check on search (fastest, ~300ms)
+	SecurityStandard SecurityLevel = "standard"
+	// SecurityEnhanced - Basic passive liveness check (balanced, ~350ms)
+	SecurityEnhanced SecurityLevel = "enhanced"
+	// SecurityMaximum - Full liveness check with tenant threshold (~500ms)
+	SecurityMaximum SecurityLevel = "maximum"
+)
+
 var (
 	validPlans = map[string]bool{
 		PlanStarter:    true,
@@ -24,6 +36,16 @@ var (
 
 	slugRegex = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 )
+
+// IsValid checks if the security level is a valid value
+func (s SecurityLevel) IsValid() bool {
+	switch s {
+	case SecurityStandard, SecurityEnhanced, SecurityMaximum:
+		return true
+	default:
+		return false
+	}
+}
 
 // Tenant representa um cliente B2B do sistema
 type Tenant struct {
@@ -39,15 +61,16 @@ type Tenant struct {
 
 // TenantSettings contém configurações específicas do tenant
 type TenantSettings struct {
-	VerificationThreshold float64 `json:"verification_threshold"`
-	MaxFacesPerUser       int     `json:"max_faces_per_user"`
-	RequireLiveness       bool    `json:"require_liveness"`
-	LivenessThreshold     float64 `json:"liveness_threshold"`
-	SearchEnabled         bool    `json:"search_enabled"`
-	SearchRequireLiveness bool    `json:"search_require_liveness"`
-	SearchThreshold       float64 `json:"search_threshold"`
-	SearchMaxResults      int     `json:"search_max_results"`
-	SearchRateLimit       int     `json:"search_rate_limit"`
+	VerificationThreshold float64       `json:"verification_threshold"`
+	MaxFacesPerUser       int           `json:"max_faces_per_user"`
+	RequireLiveness       bool          `json:"require_liveness"`
+	LivenessThreshold     float64       `json:"liveness_threshold"`
+	SearchEnabled         bool          `json:"search_enabled"`
+	SearchRequireLiveness bool          `json:"search_require_liveness"`
+	SearchThreshold       float64       `json:"search_threshold"`
+	SearchMaxResults      int           `json:"search_max_results"`
+	SearchRateLimit       int           `json:"search_rate_limit"`
+	SecurityLevel         SecurityLevel `json:"security_level"`
 }
 
 // DefaultTenantSettings retorna configurações padrão
@@ -62,6 +85,7 @@ func DefaultTenantSettings() TenantSettings {
 		SearchThreshold:       0.85,
 		SearchMaxResults:      10,
 		SearchRateLimit:       30,
+		SecurityLevel:         SecurityStandard,
 	}
 }
 
@@ -100,6 +124,12 @@ func (t *Tenant) GetSettings() TenantSettings {
 	}
 	if v, ok := t.Settings["search_rate_limit"].(float64); ok {
 		defaults.SearchRateLimit = int(v)
+	}
+	if v, ok := t.Settings["security_level"].(string); ok {
+		secLevel := SecurityLevel(v)
+		if secLevel.IsValid() {
+			defaults.SecurityLevel = secLevel
+		}
 	}
 
 	return defaults

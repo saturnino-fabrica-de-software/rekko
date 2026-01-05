@@ -599,3 +599,72 @@ func (p *Provider) CheckLiveness(ctx context.Context, image []byte, threshold fl
 
 	return result, nil
 }
+
+// AnalyzeFace performs unified face analysis in a single call
+// Uses DetectFaces API to get detection, quality, and liveness data
+// Note: AWS Rekognition does not expose embeddings, so embedding will be nil
+func (p *Provider) AnalyzeFace(ctx context.Context, image []byte) (*provider.FaceAnalysis, error) {
+	if err := validateImage(image); err != nil {
+		return nil, fmt.Errorf("tenant %s: %w", p.tenantID, err)
+	}
+
+	input := &rekognition.DetectFacesInput{
+		Image: &types.Image{
+			Bytes: image,
+		},
+		Attributes: []types.Attribute{types.AttributeAll},
+	}
+
+	output, err := p.client.rekognition.DetectFaces(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: analyze face: %w", p.tenantID, err)
+	}
+
+	if len(output.FaceDetails) == 0 {
+		return nil, fmt.Errorf("tenant %s: %w", p.tenantID, ErrNoFaceDetected)
+	}
+
+	face := output.FaceDetails[0]
+
+	eyesOpen := false
+	if face.EyesOpen != nil && face.EyesOpen.Value {
+		eyesOpen = *face.EyesOpen.Confidence > 80
+	}
+
+	facingCamera := false
+	if face.Pose != nil {
+		yaw := float64(*face.Pose.Yaw)
+		pitch := float64(*face.Pose.Pitch)
+		if yaw > -30 && yaw < 30 && pitch > -20 && pitch < 20 {
+			facingCamera = true
+		}
+	}
+
+	qualityScore := p.calculateQualityScore(face.Quality)
+	qualityOK := qualityScore >= 0.6
+	confidence := float64(*face.Confidence) / 100.0
+	livenessScore := confidence
+	if qualityOK {
+		livenessScore = confidence * qualityScore
+	}
+
+	return &provider.FaceAnalysis{
+		Embedding: nil, // Rekognition does not expose embeddings
+		BoundingBox: provider.BoundingBox{
+			X:      float64(*face.BoundingBox.Left),
+			Y:      float64(*face.BoundingBox.Top),
+			Width:  float64(*face.BoundingBox.Width),
+			Height: float64(*face.BoundingBox.Height),
+		},
+		Confidence:    confidence,
+		QualityScore:  qualityScore,
+		LivenessScore: livenessScore,
+		LivenessChecks: provider.LivenessChecks{
+			SingleFace:   len(output.FaceDetails) == 1,
+			QualityOK:    qualityOK,
+			FacingCamera: facingCamera,
+			EyesOpen:     eyesOpen,
+		},
+		FaceCount: len(output.FaceDetails),
+	}, nil
+}

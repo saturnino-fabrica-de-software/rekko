@@ -105,6 +105,12 @@ var (
 		StatusCode: 422,
 	}
 
+	ErrLowLivenessConfidence = &AppError{
+		Code:       "LOW_LIVENESS_CONFIDENCE",
+		Message:    "Liveness confidence too low",
+		StatusCode: 400,
+	}
+
 	ErrTenantNotFound = &AppError{
 		Code:       "TENANT_NOT_FOUND",
 		Message:    "Tenant not found",
