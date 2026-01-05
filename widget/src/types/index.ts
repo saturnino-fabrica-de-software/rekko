@@ -155,7 +155,7 @@ export interface RekkoConfig {
   debug?: boolean;
 }
 
-export type RekkoMode = 'register' | 'verify';
+export type RekkoMode = 'register' | 'verify' | 'identify';
 
 // ============================================================================
 // RESULTS & ERRORS
@@ -168,6 +168,8 @@ export interface RekkoResult {
   verified?: boolean;
   confidence?: number;
   registered?: boolean;
+  /** For identify mode: whether a match was found */
+  identified?: boolean;
   /** Consent records for audit trail */
   consents?: ConsentRecord[];
   /** Processing latency in ms */
@@ -229,6 +231,8 @@ export type RekkoEventType =
   | 'verification_failed'
   | 'registration_success'
   | 'registration_failed'
+  | 'identification_success'  // Person identified (1:N search)
+  | 'identification_failed'   // Person not found in database
   | 'network_status_changed'; // Connection quality changed
 
 export interface RekkoEvent {

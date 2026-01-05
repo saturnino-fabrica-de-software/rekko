@@ -158,27 +158,27 @@
     <div class="cards">
       <div class="card">
         <div class="card-title">
-          Verificação de Entrada
-          <span class="badge badge-verify">Verify</span>
+          Primeiro Acesso
+          <span class="badge badge-register">Cadastro</span>
         </div>
         <p class="card-description">
-          Simula verificação facial para entrada em evento. O usuário já possui cadastro prévio.
+          Cadastra a face do usuário na compra do ingresso. Inclui prova de vida.
         </p>
-        <button class="btn btn-primary" onclick="openVerify()">
-          Verificar Identidade
+        <button class="btn btn-secondary" onclick="openRegister()">
+          Cadastrar Face
         </button>
       </div>
 
       <div class="card">
         <div class="card-title">
-          Cadastro de Face
-          <span class="badge badge-register">Register</span>
+          Entrada VIP
+          <span class="badge" style="background: #fef3c7; color: #92400e;">1:N</span>
         </div>
         <p class="card-description">
-          Simula primeiro cadastro facial do usuário com validação de liveness.
+          Passou, entrou! Identifica automaticamente sem precisar mostrar ingresso.
         </p>
-        <button class="btn btn-secondary" onclick="openRegister()">
-          Cadastrar Face
+        <button class="btn" style="background: #f59e0b; color: white;" onclick="openIdentify()">
+          Entrar sem Ingresso
         </button>
       </div>
     </div>
@@ -262,14 +262,17 @@
         },
       });
 
+      // Store the last registered user for verification
+      let lastRegisteredUser = localStorage.getItem('rekko_last_user') || 'demo-user-001';
+
       // Verify mode
       window.openVerify = () => {
         clearLog();
-        log('Abrindo widget em modo verificação...', 'event');
+        log(`Verificando usuário: ${lastRegisteredUser}`, 'event');
 
         Rekko.open({
           mode: 'verify',
-          externalId: 'user-123',
+          externalId: lastRegisteredUser,
           consent: {
             privacyPolicyUrl: 'https://rekko.io/privacy',
           },
@@ -288,16 +291,46 @@
       // Register mode
       window.openRegister = () => {
         clearLog();
-        log('Abrindo widget em modo cadastro...', 'event');
+        const newUserId = 'user-' + Date.now();
+        log(`Cadastrando novo usuário: ${newUserId}`, 'event');
 
         Rekko.open({
           mode: 'register',
-          externalId: 'new-user-' + Date.now(),
+          externalId: newUserId,
           consent: {
             privacyPolicyUrl: 'https://rekko.io/privacy',
           },
           onSuccess: (result) => {
-            log(`SUCESSO: Face cadastrada (ID: ${result.faceId?.slice(0, 8)}...)`, 'success');
+            // Save for later verification
+            lastRegisteredUser = newUserId;
+            localStorage.setItem('rekko_last_user', newUserId);
+            log(`SUCESSO: Face cadastrada para ${newUserId}`, 'success');
+          },
+          onError: (error) => {
+            log(`ERRO: ${error.message} (${error.code})`, 'error');
+          },
+          onEvent: (event) => {
+            log(`${event.type}`, 'event');
+          },
+        });
+      };
+
+      // Identify mode - "Passou, entrou!" - No ID required
+      window.openIdentify = () => {
+        clearLog();
+        log('🔍 Identificando pessoa pela face...', 'event');
+
+        Rekko.open({
+          mode: 'identify',
+          consent: {
+            privacyPolicyUrl: 'https://rekko.io/privacy',
+          },
+          onSuccess: (result) => {
+            if (result.identified) {
+              log(`✅ IDENTIFICADO: ${result.externalId} (${Math.round((result.confidence || 0) * 100)}% confiança)`, 'success');
+            } else {
+              log(`❌ Pessoa não encontrada no sistema`, 'error');
+            }
           },
           onError: (error) => {
             log(`ERRO: ${error.message} (${error.code})`, 'error');

@@ -15,6 +15,44 @@ interface WidgetProps {
   rekko: RekkoWidget;
 }
 
+/**
+ * Maps server-side liveness failure reasons to user-friendly messages.
+ * This ensures consistent UX regardless of backend provider (DeepFace/Rekognition).
+ */
+const LIVENESS_ERROR_MESSAGES: Record<string, string> = {
+  'no face detected': 'Não foi possível detectar seu rosto. Certifique-se de estar bem iluminado e de frente para a câmera.',
+  'multiple faces detected': 'Detectamos mais de um rosto. Por favor, certifique-se de que apenas você está na imagem.',
+  'image quality too low': 'A qualidade da imagem está baixa. Tente melhorar a iluminação do ambiente.',
+  'confidence below threshold': 'Não conseguimos validar com certeza. Tente novamente com melhor iluminação.',
+  'eyes not visible': 'Seus olhos não estão visíveis. Remova óculos escuros e olhe para a câmera.',
+  'face not centered': 'Seu rosto não está centralizado. Posicione-se no centro da tela.',
+};
+
+/**
+ * Gets a user-friendly error message from server reasons
+ */
+function getLivenessErrorMessage(reasons: string[] | undefined, defaultMessage: string): string {
+  if (!reasons || reasons.length === 0) {
+    return defaultMessage;
+  }
+
+  // Try to find a mapped message for the first reason
+  const firstReason = reasons[0];
+  if (!firstReason) {
+    return defaultMessage;
+  }
+
+  const reason = firstReason.toLowerCase();
+  for (const [key, message] of Object.entries(LIVENESS_ERROR_MESSAGES)) {
+    if (reason.includes(key)) {
+      return message;
+    }
+  }
+
+  // If no mapping found, return a generic but helpful message
+  return 'A verificação não foi bem-sucedida. Tente novamente em um ambiente bem iluminado.';
+}
+
 export function Widget({ rekko }: WidgetProps) {
   const state = rekko.getState();
   const texts = rekko.getTexts();
@@ -86,6 +124,22 @@ export function Widget({ rekko }: WidgetProps) {
         } else {
           rekko.emit('verification_failed', verifyResult);
         }
+      } else if (options.mode === 'identify') {
+        const searchResult = response as { identified: boolean; externalId?: string; faceId?: string; confidence?: number };
+        const rekkoResult: RekkoResult = {
+          mode: 'identify',
+          identified: searchResult.identified,
+          externalId: searchResult.externalId,
+          faceId: searchResult.faceId,
+          confidence: searchResult.confidence,
+        };
+        setResult(rekkoResult);
+
+        if (searchResult.identified) {
+          rekko.emit('identification_success', searchResult);
+        } else {
+          rekko.emit('identification_failed', searchResult);
+        }
       } else {
         const registerResult = response as { faceId: string; registered: boolean };
         const rekkoResult: RekkoResult = {
@@ -107,7 +161,7 @@ export function Widget({ rekko }: WidgetProps) {
       setErrorMessage(null);
     } catch (err) {
       const error = err as RekkoError;
-      setResult({ mode: options.mode, verified: false, registered: false });
+      setResult({ mode: options.mode, verified: false, registered: false, identified: false });
 
       if (isRekkoError(err)) {
         setErrorMessage(error.message);
@@ -115,7 +169,12 @@ export function Widget({ rekko }: WidgetProps) {
         setErrorMessage(null);
       }
 
-      rekko.emit(options.mode === 'verify' ? 'verification_failed' : 'registration_failed', error);
+      const failedEvent = options.mode === 'verify'
+        ? 'verification_failed'
+        : options.mode === 'identify'
+          ? 'identification_failed'
+          : 'registration_failed';
+      rekko.emit(failedEvent, error);
       rekko.setState('result');
     }
   };
@@ -123,6 +182,8 @@ export function Widget({ rekko }: WidgetProps) {
   const handleCameraCapture = (imageData: string) => {
     setCapturedImage(imageData);
 
+    // Register mode requires liveness check first
+    // Verify and Identify modes go straight to processing
     if (options.mode === 'register') {
       rekko.emit('liveness_started');
       rekko.setState('liveness');
@@ -140,18 +201,30 @@ export function Widget({ rekko }: WidgetProps) {
       return;
     }
 
-    // Validate liveness with backend using the best frame (middle of captured frames)
-    const bestFrame = frames.length > 0 ? frames[Math.floor(frames.length / 2)] ?? imageToProcess : imageToProcess;
+    // Use the initial captured image for liveness validation - it was taken when
+    // the face was centered and facing the camera. The liveness frames are taken
+    // during head turns and may not have a detectable frontal face.
+    const livenessImage = capturedImage || imageToProcess;
 
     if (client) {
       try {
         rekko.emit('liveness_challenge', { stage: 'server_validation' });
-        const livenessResult = await client.validateLiveness(bestFrame);
+        const livenessResult = await client.validateLiveness(livenessImage);
 
         if (!livenessResult.isLive) {
-          rekko.emit('liveness_failed', { reason: 'server_validation', confidence: livenessResult.confidence });
+          // Get user-friendly error message based on server reasons
+          const userMessage = getLivenessErrorMessage(
+            livenessResult.reasons,
+            texts.liveness.failed
+          );
+
+          rekko.emit('liveness_failed', {
+            reason: 'server_validation',
+            confidence: livenessResult.confidence,
+            serverReasons: livenessResult.reasons,
+          });
           setResult({ mode: options.mode, verified: false, registered: false });
-          setErrorMessage(texts.liveness.failed);
+          setErrorMessage(userMessage);
           rekko.setState('result');
           return;
         }
@@ -161,8 +234,13 @@ export function Widget({ rekko }: WidgetProps) {
           serverConfidence: livenessResult.confidence
         });
       } catch (err) {
-        // If server validation fails, still allow registration (graceful degradation)
-        rekko.emit('liveness_success', { framesCount: frames.length, serverValidation: 'skipped' });
+        // If server validation fails with network error, show specific message
+        const networkMessage = 'Erro de conexão com o servidor. Verifique sua internet e tente novamente.';
+        rekko.emit('liveness_failed', { reason: 'network_error', error: err });
+        setResult({ mode: options.mode, verified: false, registered: false });
+        setErrorMessage(networkMessage);
+        rekko.setState('result');
+        return;
       }
     } else {
       rekko.emit('liveness_success', { framesCount: frames.length });
@@ -181,6 +259,7 @@ export function Widget({ rekko }: WidgetProps) {
   const isSuccess = () => {
     if (!result) return false;
     if (result.mode === 'verify') return result.verified === true;
+    if (result.mode === 'identify') return result.identified === true;
     return result.registered === true;
   };
 

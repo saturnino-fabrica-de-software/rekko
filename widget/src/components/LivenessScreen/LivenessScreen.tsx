@@ -1,6 +1,10 @@
 /**
  * LivenessScreen Component
  * Active liveness detection with visual challenges
+ *
+ * IMPORTANT: This component does NOT decide if liveness passed.
+ * It only collects evidence (frames from challenges) and sends to server.
+ * The server is the source of truth for liveness validation.
  */
 
 import { useRef, useEffect, useState, useCallback } from 'preact/hooks';
@@ -13,6 +17,9 @@ interface LivenessScreenProps {
   onFailed: () => void;
   onSkip?: () => void;
 }
+
+// When challenges complete, we show "validating" state while server processes
+type ValidationState = 'idle' | 'validating';
 
 const CHALLENGE_TEXTS: Record<LivenessChallenge, { instruction: string; icon: string }> = {
   turn_left: {
@@ -36,10 +43,17 @@ export function LivenessScreen({ onComplete, onFailed, onSkip }: LivenessScreenP
   const [isLoading, setIsLoading] = useState(true);
   const [cameraReady, setCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validationState, setValidationState] = useState<ValidationState>('idle');
 
   const handleComplete = useCallback((results: ChallengeResult[]) => {
+    // Show "validating" state - server will decide if it passed
+    setValidationState('validating');
+
     const allFrames = results.flatMap(r => r.frames);
-    onComplete(allFrames);
+    // Small delay to show the validating state before transitioning
+    setTimeout(() => {
+      onComplete(allFrames);
+    }, 500);
   }, [onComplete]);
 
   const { state, start, reset } = useLiveness({
@@ -107,11 +121,13 @@ export function LivenessScreen({ onComplete, onFailed, onSkip }: LivenessScreenP
 
   const getCurrentInstruction = () => {
     if (!state.currentChallenge) return '';
+    if (state.waitingForNeutral) return 'Olhe para frente';
     return CHALLENGE_TEXTS[state.currentChallenge].instruction;
   };
 
   const getCurrentIcon = () => {
     if (!state.currentChallenge) return '';
+    if (state.waitingForNeutral) return '↑';
     return CHALLENGE_TEXTS[state.currentChallenge].icon;
   };
 
@@ -179,7 +195,7 @@ export function LivenessScreen({ onComplete, onFailed, onSkip }: LivenessScreenP
         </div>
       )}
 
-      {state.challengeState === 'failed' && (
+      {state.challengeState === 'failed' && validationState === 'idle' && (
         <div class={styles.failedState}>
           <p class={styles.failedText}>
             {state.attempt < 3
@@ -192,14 +208,16 @@ export function LivenessScreen({ onComplete, onFailed, onSkip }: LivenessScreenP
         </div>
       )}
 
-      {state.challengeState === 'success' && (
-        <div class={styles.successState}>
-          <div class={styles.successIcon}>✓</div>
-          <p class={styles.successText}>Verificação concluída!</p>
+      {/* Show validating state when challenges complete - server will decide */}
+      {(state.challengeState === 'success' || validationState === 'validating') && (
+        <div class={styles.validatingState}>
+          <div class={styles.validatingSpinner} />
+          <p class={styles.validatingText}>Validando com o servidor...</p>
+          <p class={styles.validatingSubtext}>Isso pode levar alguns segundos</p>
         </div>
       )}
 
-      {onSkip && !state.isActive && state.challengeState !== 'success' && (
+      {onSkip && !state.isActive && state.challengeState !== 'success' && validationState === 'idle' && (
         <button class={styles.skipLink} onClick={onSkip}>
           Pular esta etapa
         </button>

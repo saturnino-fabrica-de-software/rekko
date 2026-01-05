@@ -18,9 +18,9 @@ import (
 type WidgetService interface {
 	CreateSession(ctx context.Context, publicKey, origin string) (*domain.WidgetSession, error)
 	ValidateSession(ctx context.Context, sessionID uuid.UUID) (*domain.WidgetSession, error)
-	Verify(ctx context.Context, sessionID uuid.UUID, externalID string, imageBytes []byte) (*domain.Verification, error)
 	Register(ctx context.Context, sessionID uuid.UUID, externalID string, imageBytes []byte) (*domain.Face, error)
 	ValidateLiveness(ctx context.Context, sessionID uuid.UUID, imageBytes []byte) (*domain.LivenessResult, error)
+	Search(ctx context.Context, sessionID uuid.UUID, imageBytes []byte, clientIP string) (*domain.SearchResult, error)
 }
 
 // WidgetHandler handles widget-related requests
@@ -56,12 +56,6 @@ type CreateSessionRequest struct {
 type CreateSessionResponse struct {
 	SessionID string `json:"session_id"`
 	ExpiresAt string `json:"expires_at"`
-}
-
-// WidgetVerifyRequest request for widget verification
-type WidgetVerifyRequest struct {
-	SessionID  string `json:"session_id"`
-	ExternalID string `json:"external_id"`
 }
 
 // WidgetRegisterRequest request for widget registration
@@ -166,78 +160,6 @@ func (h *WidgetHandler) CreateSession(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(CreateSessionResponse{
 		SessionID: session.ID.String(),
 		ExpiresAt: session.ExpiresAt.Format(time.RFC3339),
-	})
-}
-
-// Verify POST /v1/widget/verify - verify face using widget session
-// @Summary Widget face verification
-// @Description Verifies a face using a widget session (1:1 verification)
-// @Tags widget
-// @Accept multipart/form-data
-// @Produce json
-// @Param session_id formData string true "Widget session ID"
-// @Param external_id formData string true "External user ID"
-// @Param image formData file true "Face image"
-// @Success 200 {object} VerifyResponse
-// @Failure 400 {object} domain.AppError
-// @Failure 401 {object} domain.AppError
-// @Failure 404 {object} domain.AppError
-// @Router /v1/widget/verify [post]
-func (h *WidgetHandler) Verify(c *fiber.Ctx) error {
-	start := time.Now()
-
-	// 1. Extract session_id from form
-	sessionIDStr := strings.TrimSpace(c.FormValue("session_id"))
-	if sessionIDStr == "" {
-		return domain.ErrValidationFailed.WithError(errors.New("session_id is required"))
-	}
-
-	sessionID, err := uuid.Parse(sessionIDStr)
-	if err != nil {
-		return domain.ErrValidationFailed.WithError(fmt.Errorf("invalid session_id format: %w", err))
-	}
-
-	// 2. Extract external_id from form
-	externalID := strings.TrimSpace(c.FormValue("external_id"))
-	if externalID == "" {
-		return domain.ErrValidationFailed.WithError(errors.New("external_id is required"))
-	}
-
-	// 3. Extract and validate image
-	imageBytes, err := extractAndValidateImage(c)
-	if err != nil {
-		return fmt.Errorf("widget verify: %w", err)
-	}
-
-	// 4. Call service to verify
-	verification, err := h.service.Verify(c.Context(), sessionID, externalID, imageBytes)
-	if err != nil {
-		return err
-	}
-
-	// 5. Get session for tenant_id (for tracking)
-	session, _ := h.service.ValidateSession(c.Context(), sessionID)
-	if session != nil {
-		// 6. Track usage (async)
-		h.trackUsage(session.TenantID, "widget_verifications")
-
-		// 7. Dispatch webhook event (async)
-		elapsed := time.Since(start)
-		h.dispatchWidgetEvent(session.TenantID, "widget.verified", map[string]interface{}{
-			"verified":    verification.Verified,
-			"confidence":  verification.Confidence,
-			"external_id": externalID,
-			"session_id":  sessionID.String(),
-			"latency_ms":  elapsed.Milliseconds(),
-		})
-	}
-
-	// 8. Return response
-	return c.JSON(VerifyResponse{
-		Verified:       verification.Verified,
-		Confidence:     verification.Confidence,
-		VerificationID: verification.ID.String(),
-		LatencyMs:      verification.LatencyMs,
 	})
 }
 
@@ -370,5 +292,88 @@ func (h *WidgetHandler) ValidateLiveness(c *fiber.Ctx) error {
 			SingleFace:   result.Checks.SingleFace,
 		},
 		Reasons: result.Reasons,
+	})
+}
+
+// WidgetSearchResponse represents the response for widget search (identify) operation
+type WidgetSearchResponse struct {
+	Identified bool    `json:"identified"`
+	ExternalID string  `json:"external_id,omitempty"`
+	FaceID     string  `json:"face_id,omitempty"`
+	Confidence float64 `json:"confidence,omitempty"`
+}
+
+// Search godoc
+// @Summary Search for a face in the tenant's database (1:N identification)
+// @Description Identifies a person by their face without requiring an external ID
+// @Tags Widget
+// @Accept multipart/form-data
+// @Produce json
+// @Param session_id formData string true "Widget session ID"
+// @Param image formData file true "Face image"
+// @Success 200 {object} WidgetSearchResponse
+// @Failure 400 {object} domain.AppError
+// @Failure 401 {object} domain.AppError
+// @Failure 404 {object} domain.AppError "No matching face found"
+// @Router /v1/widget/search [post]
+func (h *WidgetHandler) Search(c *fiber.Ctx) error {
+	// 1. Extract session_id from form
+	sessionIDStr := strings.TrimSpace(c.FormValue("session_id"))
+	if sessionIDStr == "" {
+		return domain.ErrValidationFailed.WithError(errors.New("session_id is required"))
+	}
+
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		return domain.ErrValidationFailed.WithError(fmt.Errorf("invalid session_id format: %w", err))
+	}
+
+	// 2. Extract and validate image
+	imageBytes, err := extractAndValidateImage(c)
+	if err != nil {
+		return fmt.Errorf("widget search: %w", err)
+	}
+
+	// 3. Get client IP for audit
+	clientIP := c.IP()
+
+	// 4. Call service to search
+	result, err := h.service.Search(c.Context(), sessionID, imageBytes, clientIP)
+	if err != nil {
+		return err
+	}
+
+	// 5. Get session for tenant_id (for tracking)
+	session, _ := h.service.ValidateSession(c.Context(), sessionID)
+	if session != nil {
+		// 6. Track usage (async)
+		h.trackUsage(session.TenantID, "widget_searches")
+
+		// 7. Dispatch webhook event (async)
+		identified := len(result.Matches) > 0
+		eventData := map[string]interface{}{
+			"identified": identified,
+			"session_id": sessionID.String(),
+		}
+		if identified {
+			eventData["external_id"] = result.Matches[0].ExternalID
+			eventData["confidence"] = result.Matches[0].Similarity
+		}
+		h.dispatchWidgetEvent(session.TenantID, "widget.searched", eventData)
+	}
+
+	// 8. Return response
+	if len(result.Matches) == 0 {
+		return c.JSON(WidgetSearchResponse{
+			Identified: false,
+		})
+	}
+
+	match := result.Matches[0]
+	return c.JSON(WidgetSearchResponse{
+		Identified: true,
+		ExternalID: match.ExternalID,
+		FaceID:     match.FaceID.String(),
+		Confidence: match.Similarity,
 	})
 }

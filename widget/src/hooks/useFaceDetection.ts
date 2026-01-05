@@ -68,6 +68,9 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
   const stabilityStartRef = useRef<number | null>(null);
   const lastDetectionRef = useRef<FaceDetectionResult | null>(null);
   const isRunningRef = useRef(false);
+  const countdownStartedRef = useRef(false);
+  const startCountdownRef = useRef<() => void>(() => {});
+  const cancelCountdownRef = useRef<() => void>(() => {});
 
   // Determine detection state from result
   const getStateFromDetection = useCallback((detection: FaceDetectionResult): DetectionState => {
@@ -99,8 +102,8 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
       return 'face_not_centered';
     }
 
-    // Check quality
-    if (!quality.isAcceptable) {
+    // Check quality - be more lenient, just check if eyes are visible
+    if (!quality.eyesVisible) {
       return 'poor_lighting';
     }
 
@@ -121,31 +124,67 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
 
       const stabilityTime = Date.now() - stabilityStartRef.current;
 
-      setState(prev => {
-        const nextState = prev.state === 'countdown' ? 'countdown' : newDetectionState;
-        if (prev.state !== nextState) {
-          onStateChange?.(nextState);
+      // Check if we should start countdown (using ref to prevent race conditions)
+      if (stabilityTime >= config.stabilityTimeMs && !countdownStartedRef.current) {
+        countdownStartedRef.current = true;
+        onFaceReady?.();
+
+        // Set initial countdown state
+        setState(prev => ({
+          ...prev,
+          detection,
+          state: 'countdown',
+          stabilityTime,
+          countdown: config.countdownSeconds,
+        }));
+
+        // Start the countdown interval directly (no setTimeout indirection)
+        if (countdownIntervalRef.current === null) {
+          countdownIntervalRef.current = window.setInterval(() => {
+            setState(prev => {
+              if (prev.countdown === null || prev.countdown <= 1) {
+                if (countdownIntervalRef.current) {
+                  clearInterval(countdownIntervalRef.current);
+                  countdownIntervalRef.current = null;
+                }
+                // Keep countdownStartedRef = true to prevent new countdowns after capture
+                // It will only reset on explicit reset() call
+                onCountdownComplete?.();
+                return { ...prev, state: 'capturing', countdown: null };
+              }
+              return { ...prev, countdown: prev.countdown - 1 };
+            });
+          }, 1000);
         }
+        return;
+      }
+
+      setState(prev => {
+        // Don't interrupt countdown or capturing
+        if (prev.state === 'countdown' || prev.state === 'capturing') {
+          return { ...prev, detection, stabilityTime };
+        }
+
+        if (prev.state !== newDetectionState) {
+          onStateChange?.(newDetectionState);
+        }
+
         return {
           ...prev,
           detection,
-          state: nextState,
+          state: newDetectionState,
           stabilityTime,
         };
       });
-
-      // Check if stable enough to start countdown
-      if (stabilityTime >= config.stabilityTimeMs && state.state !== 'countdown') {
-        onFaceReady?.();
-        startCountdown();
-      }
     } else {
-      // Face not ready, reset stability
+      // Face not ready, reset stability and countdown flag
       stabilityStartRef.current = null;
 
-      // Cancel countdown if face leaves
-      if (state.countdown !== null) {
-        cancelCountdown();
+      // Cancel countdown if running
+      if (countdownIntervalRef.current !== null) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+        countdownStartedRef.current = false;
       }
 
       setState(prev => ({
@@ -153,9 +192,10 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
         detection,
         state: newDetectionState,
         stabilityTime: 0,
+        countdown: null,
       }));
     }
-  }, [getStateFromDetection, config.stabilityTimeMs, state.state, state.countdown, onFaceReady]);
+  }, [getStateFromDetection, config.stabilityTimeMs, config.countdownSeconds, onFaceReady, onStateChange, onCountdownComplete]);
 
   // Start countdown
   const startCountdown = useCallback(() => {
@@ -176,6 +216,8 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
             countdownIntervalRef.current = null;
           }
 
+          // Reset countdown flag so it can be triggered again after capture
+          countdownStartedRef.current = false;
           onCountdownComplete?.();
 
           return {
@@ -200,11 +242,17 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
       countdownIntervalRef.current = null;
     }
 
+    countdownStartedRef.current = false;
+
     setState(prev => ({
       ...prev,
       countdown: null,
     }));
   }, []);
+
+  // Update refs so processDetection can access these functions
+  startCountdownRef.current = startCountdown;
+  cancelCountdownRef.current = cancelCountdown;
 
   // Run detection loop
   const runDetection = useCallback(async () => {
@@ -297,6 +345,7 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
     stop();
     stabilityStartRef.current = null;
     lastDetectionRef.current = null;
+    countdownStartedRef.current = false;
 
     setState({
       state: 'initializing',
@@ -316,16 +365,22 @@ export function useFaceDetection(options: UseFaceDetectionOptions): UseFaceDetec
     return lastDetectionRef.current;
   }, []);
 
-  // Auto-start on mount
+  // Auto-start on mount (use refs to avoid re-running on callback changes)
+  const startRef = useRef(start);
+  const stopRef = useRef(stop);
+  startRef.current = start;
+  stopRef.current = stop;
+
   useEffect(() => {
     if (autoStart) {
-      start();
+      startRef.current();
     }
 
     return () => {
-      stop();
+      stopRef.current();
     };
-  }, [autoStart, start, stop]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   return {
     state,

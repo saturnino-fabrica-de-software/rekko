@@ -65,6 +65,46 @@ func DefaultTenantSettings() TenantSettings {
 	}
 }
 
+// GetSettings returns typed tenant settings with defaults for missing values
+func (t *Tenant) GetSettings() TenantSettings {
+	defaults := DefaultTenantSettings()
+
+	if t.Settings == nil {
+		return defaults
+	}
+
+	// Parse each setting with type assertion and fallback to default
+	if v, ok := t.Settings["verification_threshold"].(float64); ok {
+		defaults.VerificationThreshold = v
+	}
+	if v, ok := t.Settings["max_faces_per_user"].(float64); ok {
+		defaults.MaxFacesPerUser = int(v)
+	}
+	if v, ok := t.Settings["require_liveness"].(bool); ok {
+		defaults.RequireLiveness = v
+	}
+	if v, ok := t.Settings["liveness_threshold"].(float64); ok {
+		defaults.LivenessThreshold = v
+	}
+	if v, ok := t.Settings["search_enabled"].(bool); ok {
+		defaults.SearchEnabled = v
+	}
+	if v, ok := t.Settings["search_require_liveness"].(bool); ok {
+		defaults.SearchRequireLiveness = v
+	}
+	if v, ok := t.Settings["search_threshold"].(float64); ok {
+		defaults.SearchThreshold = v
+	}
+	if v, ok := t.Settings["search_max_results"].(float64); ok {
+		defaults.SearchMaxResults = int(v)
+	}
+	if v, ok := t.Settings["search_rate_limit"].(float64); ok {
+		defaults.SearchRateLimit = int(v)
+	}
+
+	return defaults
+}
+
 // Validate verifica se o tenant é válido
 func (t *Tenant) Validate() error {
 	if t.Name == "" {

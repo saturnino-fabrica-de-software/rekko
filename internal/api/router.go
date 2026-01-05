@@ -271,9 +271,9 @@ func (r *Router) setupWidgetRoutes(faceService *service.FaceService, usageRepo *
 	// Created directly on app to avoid v1 auth middleware
 	widgetGroup := r.app.Group("/v1/widget")
 	widgetGroup.Post("/session", widgetHandler.CreateSession)
-	widgetGroup.Post("/verify", widgetHandler.Verify)
 	widgetGroup.Post("/register", widgetHandler.Register)
 	widgetGroup.Post("/validate", widgetHandler.ValidateLiveness)
+	widgetGroup.Post("/search", widgetHandler.Search)
 }
 
 func (r *Router) App() *fiber.App {

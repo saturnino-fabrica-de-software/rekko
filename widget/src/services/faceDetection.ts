@@ -256,7 +256,8 @@ function calculatePosition(
 
   // Validate against config
   const isSizeValid = sizeRatio >= config.minFaceSize && sizeRatio <= config.maxFaceSize;
-  const isCentered = centerOffset <= config.maxCenterOffset;
+  // Be very tolerant with centering - if face is detected and sized ok, accept it
+  const isCentered = centerOffset <= config.maxCenterOffset || isSizeValid;
 
   return {
     boundingBox: {

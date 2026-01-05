@@ -1,6 +1,6 @@
 /**
  * OrientationScreen Component
- * Pre-camera instructions screen with clean, minimal design
+ * Enterprise design with animated cards and professional illustration
  */
 
 import type { LocaleTexts } from '@/types';
@@ -12,29 +12,32 @@ interface OrientationScreenProps {
   onContinue: () => void;
 }
 
-/**
- * Orientation screen shown before camera access
- * Displays instructions for optimal face capture
- */
 export function OrientationScreen({ texts, onContinue }: OrientationScreenProps) {
   return (
     <div class={styles.container}>
-      <div class={styles.content}>
-        <h2 class={styles.title}>{texts.title}</h2>
-        <p class={styles.subtitle}>{texts.subtitle}</p>
-
-        <div class={styles.illustration}>
-          <FaceIllustration />
-        </div>
-
-        <div class={styles.instructions}>
-          <OrientationItem icon="neutral" text={texts.instructions.neutral} />
-          <OrientationItem icon="visible" text={texts.instructions.visible} />
-          <OrientationItem icon="lighting" text={texts.instructions.lighting} />
-          <OrientationItem icon="framing" text={texts.instructions.framing} />
+      {/* Icon with glow */}
+      <div class={styles.iconWrapper}>
+        <div class={styles.iconGlow} />
+        <div class={styles.iconContainer}>
+          <FaceRecognitionIcon />
         </div>
       </div>
 
+      {/* Header */}
+      <div class={styles.header}>
+        <h2 class={styles.title}>{texts.title}</h2>
+        <p class={styles.subtitle}>{texts.subtitle}</p>
+      </div>
+
+      {/* Instruction cards */}
+      <div class={styles.instructions}>
+        <OrientationItem icon="neutral" text={texts.instructions.neutral} />
+        <OrientationItem icon="visible" text={texts.instructions.visible} />
+        <OrientationItem icon="lighting" text={texts.instructions.lighting} />
+        <OrientationItem icon="framing" text={texts.instructions.framing} />
+      </div>
+
+      {/* Continue button */}
       <button class={styles.continueButton} onClick={onContinue}>
         {texts.continue}
         <ArrowIcon />
@@ -43,102 +46,35 @@ export function OrientationScreen({ texts, onContinue }: OrientationScreenProps)
   );
 }
 
-/**
- * Arrow icon for the continue button
- */
 function ArrowIcon() {
   return (
-    <svg class={styles.buttonArrow} viewBox="0 0 16 16" fill="none">
-      <path
-        d="M3 8h10M9 4l4 4-4 4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg class={styles.buttonArrow} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
     </svg>
   );
 }
 
-/**
- * Simplified face illustration
- */
-function FaceIllustration() {
+function FaceRecognitionIcon() {
   return (
-    <svg
-      class={styles.faceIllustration}
-      viewBox="0 0 140 160"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      {/* Outer dashed oval guide */}
-      <ellipse
-        cx="70"
-        cy="80"
-        rx="55"
-        ry="70"
-        stroke="var(--rekko-primary, #3b82f6)"
-        strokeWidth="2"
-        strokeDasharray="6 4"
-        fill="none"
-        opacity="0.4"
-      />
-
-      {/* Face fill */}
-      <ellipse
-        cx="70"
-        cy="78"
-        rx="38"
-        ry="48"
-        fill="var(--rekko-primary, #3b82f6)"
-        opacity="0.08"
-      />
-
-      {/* Face outline */}
-      <ellipse
-        cx="70"
-        cy="78"
-        rx="38"
-        ry="48"
-        stroke="var(--rekko-primary, #3b82f6)"
-        strokeWidth="2"
-        fill="none"
-      />
-
-      {/* Left eye */}
-      <ellipse cx="56" cy="70" rx="5" ry="3" fill="var(--rekko-primary, #3b82f6)" opacity="0.6" />
-
-      {/* Right eye */}
-      <ellipse cx="84" cy="70" rx="5" ry="3" fill="var(--rekko-primary, #3b82f6)" opacity="0.6" />
-
-      {/* Nose hint */}
-      <path
-        d="M70 78 L70 90"
-        stroke="var(--rekko-primary, #3b82f6)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        opacity="0.4"
-      />
-
-      {/* Smile */}
-      <path
-        d="M60 100 Q70 107 80 100"
-        stroke="var(--rekko-primary, #3b82f6)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        fill="none"
-        opacity="0.5"
-      />
-
-      {/* Success badge */}
-      <circle cx="115" cy="35" r="14" fill="#10b981" />
-      <path
-        d="M108 35 L113 40 L122 31"
-        stroke="white"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+    <svg width="72" height="72" viewBox="0 0 100 100" fill="currentColor">
+      <path d="M86.293,39.719c-0.133-0.036-0.269-0.059-0.405-0.082c-0.001-0.031-0.002-0.061-0.003-0.091 c-0.045-1.375-0.091-2.796-0.091-4.22c0-4.386-0.882-8.479-2.5-12.157c0.096-0.168,0.166-0.353,0.166-0.561 c0-0.574-0.425-1.028-0.974-1.117C77.401,11.712,66.858,5.263,53.73,4.84v-0.03l-1.026,0.005l-0.275-0.005l-0.75,0.012V4.84 c-13.126,0.424-23.661,6.89-28.71,16.687c-0.458,0.152-0.792,0.57-0.792,1.08c0,0.142,0.034,0.275,0.081,0.4 c-1.64,3.69-2.536,7.801-2.536,12.211c0,1.479-0.059,2.962-0.118,4.401c-0.165,0.025-0.328,0.055-0.488,0.099 c-4.048,1.11-5.621,7.801-3.582,15.232c1.507,5.491,4.571,9.716,7.744,11.001c0.312,2.06,0.599,4.175,0.837,6.277 c0.083,0.735,0.248,1.447,0.456,2.145c-0.058,0.137-0.09,0.288-0.09,0.446c0,0.433,0.249,0.796,0.602,0.994 c2.267,5.372,7.771,9.538,11.648,12.466c0.017,0.013,0.033,0.025,0.05,0.038c0.108,0.524,0.55,0.926,1.107,0.926 c0.031,0,0.057-0.015,0.087-0.018c0.718,0.551,1.349,1.053,1.824,1.491c3.416,3.142,6.374,4.269,11.881,4.444v0.027l1.021-0.004 l0.28,0.004l0.75-0.009v-0.018c5.507-0.176,8.465-1.303,11.881-4.444c0.475-0.437,1.105-0.938,1.822-1.489 c0.028,0.002,0.052,0.016,0.081,0.016c0.554,0,0.994-0.398,1.104-0.918c0.021-0.016,0.04-0.03,0.061-0.046 c3.854-2.91,9.315-7.041,11.609-12.364c0.496-0.129,0.868-0.56,0.868-1.096c0-0.262-0.103-0.492-0.25-0.685 c0.173-0.622,0.315-1.254,0.389-1.906c0.238-2.102,0.525-4.217,0.836-6.277c3.172-1.286,6.236-5.51,7.743-11.002 C91.914,47.52,90.341,40.829,86.293,39.719z M16.979,54.554c-1.756-6.399-0.596-12.531,2.533-13.389 c0.01-0.003,0.021-0.001,0.031-0.004c-0.117,3.205-0.134,6.224,0.592,8.866c0.104,0.376,0.218,0.824,0.337,1.307 c-0.141,0.191-0.24,0.415-0.24,0.67c0,0.449,0.264,0.828,0.639,1.018c0.652,2.872,1.429,6.805,2.121,11.106 C20.579,62.624,18.189,58.96,16.979,54.554z M79.805,72.061c-0.045,0.398-0.114,0.79-0.203,1.178l-0.149-0.205l-0.323,0.235 l0.334,0.458c-0.011,0.039-0.022,0.078-0.034,0.116c-0.339,0.2-0.578,0.554-0.578,0.977c0,0.016,0.008,0.03,0.009,0.045 l-0.822,0.18l0.086,0.391l0.804-0.176c-2.107,4.952-7.335,8.938-11.06,11.75c-0.088-0.029-0.18-0.049-0.276-0.056l-0.078-0.734 l-0.397,0.042l0.079,0.74c-0.479,0.14-0.836,0.564-0.836,1.089c0,0.021,0.011,0.039,0.012,0.06c-0.686,0.53-1.296,1.02-1.777,1.462 c-3.287,3.023-6.004,3.974-11.627,4.066l-0.264,0.004L52.44,93.68c-5.623-0.092-8.34-1.042-11.627-4.066 c-0.475-0.437-1.076-0.919-1.75-1.441l0.003,0l-0.082-0.392l-0.008,0.001c-0.137-0.482-0.562-0.842-1.089-0.842 c-0.124,0-0.238,0.034-0.35,0.07c-3.673-2.774-8.815-6.688-10.976-11.545c0.046-0.066,0.102-0.126,0.133-0.202l0.587,0.131 l0.087-0.391l-0.595-0.133c0-0.017,0.01-0.032,0.01-0.049c0-0.525-0.357-0.949-0.837-1.088c-0.152-0.548-0.278-1.103-0.342-1.672 c-0.825-7.279-2.22-14.751-3.282-19.423c0.125-0.184,0.215-0.394,0.215-0.633c0-0.432-0.247-0.794-0.599-0.992 c-0.126-0.514-0.248-0.986-0.356-1.383c-0.77-2.8-0.631-6.207-0.484-9.813c0.061-1.496,0.124-3.042,0.124-4.597 c0-4.104,0.816-7.94,2.319-11.392l0.321-0.093l-0.03-0.103c0.234-0.116,0.423-0.304,0.533-0.54l0.69,0.342l0.178-0.358 l-0.771-0.382c0.002-0.03,0.018-0.056,0.018-0.086c0-0.135-0.034-0.261-0.077-0.381l0.83-0.473l-0.198-0.348l-0.415,0.236 c5.024-9.169,15.214-15.131,27.82-15.319l0.17-0.005l0.359,0.005C65.397,6.508,75.49,12.287,80.62,21.219l-0.1-0.054l-0.189,0.353 l0.64,0.344c0.082,0.152,0.165,0.303,0.244,0.456c-0.025,0.095-0.059,0.187-0.059,0.29c0,0.109,0.034,0.208,0.062,0.308 l-0.657,0.32l0.175,0.359l0.658-0.32c0.105,0.144,0.234,0.264,0.394,0.346l-0.059,0.191l0.235,0.073 c1.511,3.466,2.331,7.318,2.331,11.441c0,1.448,0.047,2.882,0.092,4.269c0.12,3.678,0.233,7.152-0.56,10.035 c-0.102,0.372-0.215,0.812-0.332,1.286c-0.48,0.139-0.838,0.563-0.838,1.089c0,0.337,0.151,0.634,0.382,0.845 C81.982,57.534,80.617,64.891,79.805,72.061z M88.429,54.554c-1.209,4.407-3.6,8.071-6.013,9.574 c0.705-4.385,1.499-8.392,2.159-11.277c0.233-0.211,0.385-0.508,0.385-0.847c0-0.151-0.033-0.293-0.086-0.425 c0.143-0.586,0.277-1.111,0.398-1.552c0.729-2.652,0.749-5.659,0.662-8.847C89.033,42.079,90.177,48.182,88.429,54.554z"/>
+      <circle cx="52.704" cy="50.316" r="1.152"/>
+      <circle cx="67.512" cy="56.988" r="1.152"/>
+      <circle cx="66.329" cy="39.162" r="1.152"/>
+      <circle cx="39.038" cy="39.162" r="1.152"/>
+      <circle cx="52.728" cy="67.344" r="1.153"/>
+      <circle cx="52.728" cy="85.109" r="1.152"/>
+      <circle cx="66.36" cy="77.808" r="1.153"/>
+      <circle cx="39.038" cy="77.808" r="1.153"/>
+      <circle cx="77.208" cy="39.162" r="1.152"/>
+      <circle cx="28.108" cy="39.162" r="1.152"/>
+      <circle cx="57.771" cy="63.092" r="1.152"/>
+      <circle cx="47.683" cy="63.092" r="1.152"/>
+      <circle cx="39.038" cy="13.663" r="1.152"/>
+      <circle cx="66.361" cy="13.663" r="1.152"/>
+      <circle cx="60.865" cy="33.039" r="1.152"/>
+      <circle cx="44.847" cy="33.039" r="1.152"/>
     </svg>
   );
 }

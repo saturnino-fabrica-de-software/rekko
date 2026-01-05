@@ -24,6 +24,7 @@ type WidgetSessionRepositoryInterface interface {
 }
 
 type TenantRepositoryInterface interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error)
 	GetByPublicKey(ctx context.Context, publicKey string) (*domain.Tenant, error)
 	GetAllowedDomains(ctx context.Context, tenantID uuid.UUID) ([]string, error)
 }
@@ -112,23 +113,6 @@ func (s *WidgetService) ValidateSession(ctx context.Context, sessionID uuid.UUID
 	return session, nil
 }
 
-// Verify verifies a face using a widget session
-func (s *WidgetService) Verify(ctx context.Context, sessionID uuid.UUID, externalID string, imageBytes []byte) (*domain.Verification, error) {
-	// 1. Validate session
-	session, err := s.ValidateSession(ctx, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// 2. Call face service to verify (reuse existing logic)
-	verification, err := s.faceService.Verify(ctx, session.TenantID, externalID, imageBytes)
-	if err != nil {
-		return nil, fmt.Errorf("tenant %s: widget verify: %w", session.TenantID, err)
-	}
-
-	return verification, nil
-}
-
 // Register registers a new face using a widget session
 func (s *WidgetService) Register(ctx context.Context, sessionID uuid.UUID, externalID string, imageBytes []byte) (*domain.Face, error) {
 	// 1. Validate session
@@ -137,15 +121,15 @@ func (s *WidgetService) Register(ctx context.Context, sessionID uuid.UUID, exter
 		return nil, err
 	}
 
-	// 2. Get tenant to extract settings
-	// Note: In production, we might want to cache this or get it from the session
-	// For now, we'll use default settings for widget registration
-	// Widget registrations typically don't require liveness checks by default
-	requireLiveness := false
-	livenessThreshold := 0.90
+	// 2. Get tenant settings
+	tenant, err := s.tenantRepo.GetByID(ctx, session.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: get tenant: %w", session.TenantID, err)
+	}
+	settings := tenant.GetSettings()
 
-	// 3. Call face service to register (reuse existing logic)
-	face, err := s.faceService.Register(ctx, session.TenantID, externalID, imageBytes, requireLiveness, livenessThreshold)
+	// 3. Call face service to register using tenant settings
+	face, err := s.faceService.Register(ctx, session.TenantID, externalID, imageBytes, settings.RequireLiveness, settings.LivenessThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: widget register: %w", session.TenantID, err)
 	}
@@ -155,6 +139,11 @@ func (s *WidgetService) Register(ctx context.Context, sessionID uuid.UUID, exter
 
 // ValidateLiveness validates liveness for a widget session
 // This is used by the widget to validate active liveness challenges before registration
+//
+// Threshold is now tenant-configurable via settings.liveness_threshold
+// Default: 0.90 (see domain.DefaultTenantSettings)
+// For DeepFace (dev), recommend setting to 0.40 as it estimates confidence from face area
+// For Rekognition (prod), typical values are 0.80-0.95
 func (s *WidgetService) ValidateLiveness(ctx context.Context, sessionID uuid.UUID, imageBytes []byte) (*domain.LivenessResult, error) {
 	// 1. Validate session
 	session, err := s.ValidateSession(ctx, sessionID)
@@ -162,14 +151,46 @@ func (s *WidgetService) ValidateLiveness(ctx context.Context, sessionID uuid.UUI
 		return nil, err
 	}
 
-	// 2. Get default liveness threshold
-	// Widget uses a standard threshold for liveness validation
-	livenessThreshold := 0.85
+	// 2. Get tenant settings for liveness threshold
+	tenant, err := s.tenantRepo.GetByID(ctx, session.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: get tenant: %w", session.TenantID, err)
+	}
+	settings := tenant.GetSettings()
 
-	// 3. Call face service to check liveness
-	result, err := s.faceService.CheckLiveness(ctx, imageBytes, livenessThreshold)
+	// 3. Call face service to check liveness with tenant's threshold
+	result, err := s.faceService.CheckLiveness(ctx, imageBytes, settings.LivenessThreshold)
 	if err != nil {
 		return nil, fmt.Errorf("tenant %s: widget validate liveness: %w", session.TenantID, err)
+	}
+
+	return result, nil
+}
+
+// Search performs a 1:N face search using a widget session
+// This enables "walk-in" identification at event entrances without requiring an external ID
+// Returns the best match if confidence >= threshold
+func (s *WidgetService) Search(ctx context.Context, sessionID uuid.UUID, imageBytes []byte, clientIP string) (*domain.SearchResult, error) {
+	// 1. Validate session
+	session, err := s.ValidateSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Get tenant for settings
+	tenant, err := s.tenantRepo.GetByID(ctx, session.TenantID)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: get tenant: %w", session.TenantID, err)
+	}
+
+	// 3. Get tenant settings for search configuration
+	settings := tenant.GetSettings()
+
+	// 4. Perform search using face service
+	// Widget search returns top 1 match only for fast identification
+	result, err := s.faceService.Search(ctx, tenant, imageBytes, settings.SearchThreshold, 1, clientIP)
+	if err != nil {
+		return nil, fmt.Errorf("tenant %s: widget search: %w", session.TenantID, err)
 	}
 
 	return result, nil

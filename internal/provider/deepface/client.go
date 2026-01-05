@@ -48,11 +48,16 @@ func NewClient(config Config) *Client {
 }
 
 // Represent calls POST /represent to generate face embeddings
+// NOTE: enforce_detection=false allows processing images even with low face detection confidence.
+// This is important for real-world images with varying angles/lighting.
+// Using *bool because Go's omitempty skips false for regular bool (zero-value).
 func (c *Client) Represent(ctx context.Context, imageBase64 string) (*RepresentResponse, error) {
+	enforceDetection := false
 	req := RepresentRequest{
-		Img:      imageBase64,
-		Model:    c.config.Model,
-		Detector: c.config.Detector,
+		Img:              imageBase64,
+		Model:            c.config.Model,
+		Detector:         c.config.Detector,
+		EnforceDetection: &enforceDetection,
 	}
 
 	var resp RepresentResponse
@@ -65,10 +70,12 @@ func (c *Client) Represent(ctx context.Context, imageBase64 string) (*RepresentR
 
 // Analyze calls POST /analyze to detect faces in image
 func (c *Client) Analyze(ctx context.Context, imageBase64 string) (*AnalyzeResponse, error) {
+	enforceDetection := false
 	req := AnalyzeRequest{
-		Img:      imageBase64,
-		Actions:  []string{}, // empty = just detect face
-		Detector: c.config.Detector,
+		Img:              imageBase64,
+		Actions:          []string{}, // empty = just detect face
+		Detector:         c.config.Detector,
+		EnforceDetection: &enforceDetection,
 	}
 
 	var resp AnalyzeResponse

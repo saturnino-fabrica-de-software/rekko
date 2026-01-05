@@ -38,6 +38,7 @@ export interface LivenessState {
   timeRemaining: number;
   attempt: number;
   progress: number;
+  waitingForNeutral: boolean;
 }
 
 /**
@@ -52,12 +53,14 @@ export interface LivenessConfig {
 }
 
 const DEFAULT_CONFIG: LivenessConfig = {
-  challenges: ['turn_right', 'blink'],
+  challenges: ['turn_right', 'turn_left'],
   timeoutMs: 10000,
   maxAttempts: 3,
-  turnThreshold: 20,
+  turnThreshold: 15,
   blinkFrames: 3,
 };
+
+const NEUTRAL_YAW_THRESHOLD = 8;
 
 export interface UseLivenessOptions {
   videoRef: RefObject<HTMLVideoElement>;
@@ -99,6 +102,7 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
     timeRemaining: config.timeoutMs,
     attempt: 1,
     progress: 0,
+    waitingForNeutral: false,
   });
 
   const detectionRef = useRef<number | null>(null);
@@ -108,6 +112,10 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
   const baseYawRef = useRef<number | null>(null);
   const blinkCountRef = useRef<number>(0);
   const eyeOpenRef = useRef<boolean>(true);
+  const waitingForNeutralRef = useRef<boolean>(false);
+
+  // Ref para quebrar dependência circular entre completeChallenge e runChallenge
+  const runChallengeRef = useRef<(challenge: LivenessChallenge, completed?: ChallengeResult[]) => void>(() => {});
 
   const stopTimers = useCallback(() => {
     if (detectionRef.current) {
@@ -192,7 +200,8 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
     } else {
       const nextChallenge = remaining[0];
       if (nextChallenge) {
-        runChallenge(nextChallenge, completed);
+        // Usar ref para evitar dependência circular
+        runChallengeRef.current(nextChallenge, completed);
       }
     }
   }, [state, config, onChallengeComplete, onComplete, onFailed, stopTimers]);
@@ -205,6 +214,10 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
     eyeOpenRef.current = true;
     startTimeRef.current = Date.now();
 
+    // If this is not the first challenge, wait for user to return to neutral position
+    const shouldWaitForNeutral = completed.length > 0;
+    waitingForNeutralRef.current = shouldWaitForNeutral;
+
     setState(prev => ({
       ...prev,
       isActive: true,
@@ -213,6 +226,7 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
       completedChallenges: completed,
       timeRemaining: config.timeoutMs,
       progress: (completed.length / config.challenges.length) * 100,
+      waitingForNeutral: shouldWaitForNeutral,
     }));
 
     onChallengeStart?.(challenge);
@@ -239,6 +253,16 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
 
         if (challenge === 'turn_left' || challenge === 'turn_right') {
           const yaw = calculateYaw(detection.landmarks);
+
+          // If waiting for neutral position (between challenges), check if user returned to center
+          if (waitingForNeutralRef.current) {
+            if (Math.abs(yaw) < NEUTRAL_YAW_THRESHOLD) {
+              waitingForNeutralRef.current = false;
+              baseYawRef.current = yaw;
+              setState(prev => ({ ...prev, waitingForNeutral: false }));
+            }
+            return;
+          }
 
           if (baseYawRef.current === null) {
             baseYawRef.current = yaw;
@@ -275,6 +299,9 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
     detectionRef.current = window.setInterval(detect, 150);
   }, [config, videoRef, onChallengeStart, captureFrame, calculateYaw, completeChallenge, stopTimers]);
 
+  // Atualizar ref sempre que runChallenge mudar
+  runChallengeRef.current = runChallenge;
+
   const start = useCallback(() => {
     if (state.isActive || config.challenges.length === 0) return;
     const firstChallenge = config.challenges[0];
@@ -298,6 +325,7 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
     framesRef.current = [];
     baseYawRef.current = null;
     blinkCountRef.current = 0;
+    waitingForNeutralRef.current = false;
 
     setState({
       isActive: false,
@@ -307,6 +335,7 @@ export function useLiveness(options: UseLivenessOptions): UseLivenessReturn {
       timeRemaining: config.timeoutMs,
       attempt: 1,
       progress: 0,
+      waitingForNeutral: false,
     });
   }, [config.timeoutMs, stopTimers]);
 

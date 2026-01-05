@@ -34,6 +34,14 @@ interface ApiLivenessResponse {
   reasons?: string[];
 }
 
+// API response types for search (snake_case from Go backend)
+interface ApiSearchResponse {
+  identified: boolean;
+  external_id?: string;
+  face_id?: string;
+  confidence?: number;
+}
+
 // Frontend types (camelCase)
 export interface VerifyResponse {
   verified: boolean;
@@ -57,6 +65,13 @@ export interface LivenessResponse {
     singleFace: boolean;
   };
   reasons?: string[];
+}
+
+export interface SearchResponse {
+  identified: boolean;
+  externalId?: string;
+  faceId?: string;
+  confidence?: number;
 }
 
 export class ApiClient {
@@ -136,6 +151,22 @@ export class ApiClient {
     };
   }
 
+  async search(imageBase64: string): Promise<SearchResponse> {
+    if (!this.sessionId) {
+      throw Errors.sessionExpired();
+    }
+
+    const formData = this.createLivenessFormData(imageBase64);
+    const response = await this.requestMultipart<ApiSearchResponse>('/v1/widget/search', formData);
+
+    return {
+      identified: response.identified,
+      externalId: response.external_id,
+      faceId: response.face_id,
+      confidence: response.confidence,
+    };
+  }
+
   private createLivenessFormData(imageBase64: string): FormData {
     const formData = new FormData();
     formData.append('session_id', this.sessionId!);
@@ -202,13 +233,16 @@ export class ApiClient {
 
   async process(
     mode: RekkoMode,
-    externalId: string,
+    externalId: string | undefined,
     imageBase64: string
-  ): Promise<VerifyResponse | RegisterResponse> {
+  ): Promise<VerifyResponse | RegisterResponse | SearchResponse> {
     if (mode === 'verify') {
-      return this.verify(externalId, imageBase64);
+      return this.verify(externalId!, imageBase64);
     }
-    return this.register(externalId, imageBase64);
+    if (mode === 'identify') {
+      return this.search(imageBase64);
+    }
+    return this.register(externalId!, imageBase64);
   }
 
   private async request<T>(path: string, options: RequestInit): Promise<T> {

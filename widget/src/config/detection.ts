@@ -36,18 +36,18 @@ export interface DetectionConfig {
 }
 
 export const DEFAULT_DETECTION_CONFIG: DetectionConfig = {
-  // Face must be between 15% and 65% of image area
-  minFaceSize: 0.15,
-  maxFaceSize: 0.65,
+  // Face must be between 5% and 80% of image area (very tolerant)
+  minFaceSize: 0.05,
+  maxFaceSize: 0.80,
 
-  // Allow 15% deviation from center
-  maxCenterOffset: 0.15,
+  // Allow 50% deviation from center (very tolerant)
+  maxCenterOffset: 0.50,
 
-  // Require 90% confidence in detection
-  minDetectionScore: 0.9,
+  // Require 50% confidence in detection (very tolerant)
+  minDetectionScore: 0.5,
 
-  // Wait 500ms of stable face before countdown
-  stabilityTimeMs: 500,
+  // Wait 200ms of stable face before countdown (faster)
+  stabilityTimeMs: 200,
 
   // 3 second countdown
   countdownSeconds: 3,

@@ -31,7 +31,9 @@ func NewProvider(config Config) *Provider {
 
 // DetectFaces detects faces in the image
 func (p *Provider) DetectFaces(ctx context.Context, image []byte) ([]provider.DetectedFace, error) {
-	imageBase64 := base64.StdEncoding.EncodeToString(image)
+	// DeepFace requires the data URL prefix to identify the image format
+	// Without it, DeepFace treats the base64 string as a file path
+	imageBase64 := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(image)
 
 	resp, err := p.client.Represent(ctx, imageBase64)
 	if err != nil {
@@ -86,7 +88,8 @@ func calculateQuality(faceArea float64) float64 {
 
 // IndexFace extracts face embedding from image
 func (p *Provider) IndexFace(ctx context.Context, image []byte) (string, []float64, error) {
-	imageBase64 := base64.StdEncoding.EncodeToString(image)
+	// DeepFace requires the data URL prefix to identify the image format
+	imageBase64 := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(image)
 
 	resp, err := p.client.Represent(ctx, imageBase64)
 	if err != nil {
