@@ -51,3 +51,6 @@ build-errors.log
 # Coverage
 coverage.out
 teste_widget.html
+
+# Claude local settings
+.claude/settings.local.json
