@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rekko Widget - Demo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --primary: #0066FF;
+        --primary-dark: #0052CC;
+        --success: #059669;
+        --warning: #f59e0b;
+        --surface: #ffffff;
+        --background: #f8fafc;
+        --text: #0f172a;
+        --text-muted: #64748b;
+        --border: #e2e8f0;
+      }
+
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--background);
+        min-height: 100vh;
+        color: var(--text);
+        padding: 40px 24px;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+
+      /* Header */
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 40px;
+      }
+
+      .back-link {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        color: var(--text-muted);
+        text-decoration: none;
+        transition: color 0.2s;
+      }
+
+      .back-link:hover {
+        color: var(--primary);
+      }
+
+      .title {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      /* UUID Input Section */
+      .uuid-section {
+        background: white;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+
+      .uuid-label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+        display: block;
+      }
+
+      .uuid-row {
+        display: flex;
+        gap: 12px;
+      }
+
+      .uuid-input {
+        flex: 1;
+        padding: 14px 16px;
+        font-size: 15px;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--background);
+        color: var(--text);
+        transition: all 0.2s;
+      }
+
+      .uuid-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        background: white;
+        box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
+      }
+
+      .uuid-input::placeholder {
+        color: #94a3b8;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 14px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+
+      .btn-outline {
+        background: white;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+
+      .btn-outline:hover {
+        border-color: var(--text-muted);
+        background: var(--background);
+      }
+
+      /* Cards Grid */
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+        margin-bottom: 32px;
+      }
+
+      .card {
+        background: white;
+        border-radius: 16px;
+        border: 2px solid var(--border);
+        padding: 32px;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        text-align: center;
+      }
+
+      .card:hover {
+        border-color: var(--primary);
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0, 102, 255, 0.15);
+      }
+
+      .card.register:hover {
+        border-color: var(--success);
+        box-shadow: 0 12px 24px rgba(5, 150, 105, 0.15);
+      }
+
+      .card.identify:hover {
+        border-color: var(--warning);
+        box-shadow: 0 12px 24px rgba(245, 158, 11, 0.15);
+      }
+
+      .card-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 36px;
+        margin: 0 auto 20px;
+      }
+
+      .card.register .card-icon {
+        background: rgba(5, 150, 105, 0.1);
+      }
+
+      .card.identify .card-icon {
+        background: rgba(245, 158, 11, 0.1);
+      }
+
+      .card-title {
+        font-size: 20px;
+        font-weight: 700;
+        margin-bottom: 8px;
+        letter-spacing: -0.02em;
+      }
+
+      .card-description {
+        font-size: 14px;
+        color: var(--text-muted);
+        line-height: 1.5;
+      }
+
+      /* Log Section */
+      .log-section {
+        background: #1e293b;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      .log-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: #0f172a;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .log-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .log-clear {
+        background: none;
+        border: none;
+        color: #64748b;
+        cursor: pointer;
+        font-size: 12px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        transition: all 0.2s;
+      }
+
+      .log-clear:hover {
+        background: rgba(255, 255, 255, 0.1);
+        color: #94a3b8;
+      }
+
+      .log-body {
+        max-height: 250px;
+        overflow-y: auto;
+        padding: 12px 16px;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 12px;
+      }
+
+      .log-entry {
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: #cbd5e1;
+      }
+
+      .log-entry:last-child {
+        border-bottom: none;
+      }
+
+      .log-time {
+        color: #64748b;
+        margin-right: 8px;
+      }
+
+      .log-success { color: #4ade80; }
+      .log-error { color: #f87171; }
+      .log-event { color: #60a5fa; }
+
+      /* Code Section */
+      .code-section {
+        background: #1e293b;
+        border-radius: 12px;
+        overflow: hidden;
+        margin-bottom: 24px;
+      }
+
+      .code-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: #0f172a;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .code-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .btn-copy-code {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        font-size: 12px;
+        padding: 6px 12px;
+        border-radius: 6px;
+        transition: all 0.2s;
+        font-weight: 500;
+      }
+
+      .btn-copy-code:hover {
+        background: rgba(255, 255, 255, 0.15);
+        color: #e2e8f0;
+      }
+
+      .code-block {
+        margin: 0;
+        padding: 16px;
+        font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #e2e8f0;
+        overflow-x: auto;
+        white-space: pre;
+      }
+
+      /* Responsive */
+      @media (max-width: 600px) {
+        .cards {
+          grid-template-columns: 1fr;
+        }
+
+        .uuid-row {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header class="header">
+        <a href="../index.html" class="back-link">← Voltar</a>
+        <h1 class="title">Widget Demo</h1>
+      </header>
+
+      <!-- API Key Display -->
+      <section class="uuid-section">
+        <label class="uuid-label">Public Key (pk_live)</label>
+        <div class="uuid-row">
+          <input
+            type="text"
+            class="uuid-input"
+            id="publicKeyInput"
+            readonly
+          >
+        </div>
+      </section>
+
+      <!-- UUID Input -->
+      <section class="uuid-section">
+        <label class="uuid-label">External ID (id do usuário : string)</label>
+        <div class="uuid-row">
+          <input
+            type="text"
+            class="uuid-input"
+            id="uuidInput"
+            placeholder="Digite ou gere um UUID..."
+          >
+          <button class="btn btn-outline" onclick="generateUUID()">Gerar UUID</button>
+          <button class="btn btn-outline" onclick="loadLastUUID()">Carregar Último</button>
+        </div>
+      </section>
+
+      <!-- Action Cards -->
+      <div class="cards">
+        <div class="card register" onclick="openRegister()">
+          <div class="card-icon">📸</div>
+          <h2 class="card-title">Cadastrar Face</h2>
+          <p class="card-description">
+            Registra a face do usuário no sistema
+          </p>
+        </div>
+
+        <div class="card identify" onclick="openIdentify()">
+          <div class="card-icon">🔍</div>
+          <h2 class="card-title">Identificar (1:N)</h2>
+          <p class="card-description">
+            Busca a pessoa no banco sem precisar de ID
+          </p>
+        </div>
+      </div>
+
+      <!-- Integration Code Example -->
+      <section class="code-section">
+        <div class="code-header">
+          <span class="code-title">Código de Integração</span>
+          <button class="btn-copy-code" onclick="copyIntegrationCode()">Copiar</button>
+        </div>
+        <pre class="code-block" id="integrationCode">&lt;!-- 1. Adicione o script do Rekko --&gt;
+&lt;script src="https://cdn.rekko.io/widget.js"&gt;&lt;/script&gt;
+
+&lt;!-- 2. Inicialize com sua pk_live --&gt;
+&lt;script&gt;
+  Rekko.init({
+    apiUrl: 'https://api.rekko.io',
+    publicKey: 'pk_live_8bxDoxPK9RJgNbuOqijjAwOexRAOZWmy',
+    locale: 'pt-BR'
+  });
+
+  // 3. Cadastrar face
+  function cadastrarFace(userId) {
+    Rekko.open({
+      mode: 'register',
+      externalId: userId,
+      onSuccess: (result) =&gt; {
+        console.log('Cadastrado!', result.qualityScore);
+      },
+      onError: (error) =&gt; {
+        console.error('Erro:', error.message);
+      }
+    });
+  }
+
+  // 4. Identificar (1:N)
+  function identificar() {
+    Rekko.open({
+      mode: 'identify',
+      onSuccess: (result) =&gt; {
+        if (result.identified) {
+          console.log('Encontrado:', result.externalId);
+        }
+      }
+    });
+  }
+&lt;/script&gt;</pre>
+      </section>
+
+      <!-- Event Log -->
+      <section class="log-section">
+        <div class="log-header">
+          <span class="log-title">Event Log</span>
+          <button class="log-clear" onclick="clearLog()">Limpar</button>
+        </div>
+        <div class="log-body" id="log">
+          <div class="log-entry">Aguardando ações...</div>
+        </div>
+      </section>
+    </div>
+
+    <script type="module">
+      import { Rekko } from '../src/index.ts';
+
+      const API_URL = 'http://localhost:3000';
+      const DEFAULT_PUBLIC_KEY = 'pk_live_8bxDoxPK9RJgNbuOqijjAwOexRAOZWmy';
+
+      // Log function (defined first for use throughout)
+      function log(message, type = '') {
+        const logEl = document.getElementById('log');
+        const time = new Date().toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+        const entry = document.createElement('div');
+        entry.className = `log-entry ${type ? 'log-' + type : ''}`;
+        entry.innerHTML = `<span class="log-time">${time}</span>${message}`;
+        logEl.appendChild(entry);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      window.clearLog = () => {
+        document.getElementById('log').innerHTML = '';
+        log('Log limpo', 'event');
+      };
+
+      // Copy integration code
+      window.copyIntegrationCode = async () => {
+        const codeEl = document.getElementById('integrationCode');
+        const code = codeEl.textContent;
+
+        try {
+          await navigator.clipboard.writeText(code);
+          log('Código copiado!', 'success');
+        } catch (err) {
+          // Fallback
+          const textarea = document.createElement('textarea');
+          textarea.value = code;
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textarea);
+          log('Código copiado!', 'success');
+        }
+      };
+
+      // Set the input value
+      document.getElementById('publicKeyInput').value = DEFAULT_PUBLIC_KEY;
+
+      // Rekko configuration
+      const rekkoConfig = {
+        apiUrl: API_URL,
+        publicKey: DEFAULT_PUBLIC_KEY,
+        locale: 'pt-BR',
+        texts: {
+          'pt-BR': {
+            consent: {
+              title: 'Verificação Facial',
+              body: 'Para continuar, precisamos capturar sua face.',
+              accept: 'Continuar',
+              decline: 'Cancelar',
+            },
+            orientation: {
+              title: 'Posicione seu Rosto',
+              subtitle: 'Siga as instruções',
+              instructions: {
+                neutral: 'Expressão neutra',
+                visible: 'Rosto visível',
+                lighting: 'Boa iluminação',
+                framing: 'Centralize',
+              },
+              continue: 'Iniciar Câmera',
+            },
+            camera: {
+              title: 'Posicione seu Rosto',
+              instruction: 'Centralize no círculo',
+              positioning: 'Ajustando...',
+              capturing: 'Capturando...',
+            },
+            liveness: {
+              title: 'Verificação',
+              challenges: {
+                turn_left: 'Vire para a esquerda',
+                turn_right: 'Vire para a direita',
+                blink: 'Pisque os olhos',
+              },
+              success: 'Concluído!',
+              failed: 'Falhou. Tente novamente.',
+              timeout: 'Tempo esgotado.',
+              retry: 'Tentar Novamente',
+              skip: 'Pular',
+            },
+            processing: {
+              title: 'Processando',
+              message: 'Aguarde...',
+            },
+            result: {
+              successTitle: 'Sucesso!',
+              successMessage: 'Operação concluída.',
+              errorTitle: 'Erro',
+              errorMessage: 'Não foi possível completar.',
+              retry: 'Tentar Novamente',
+              close: 'Fechar',
+            },
+            errors: {
+              cameraPermission: 'Câmera negada',
+              cameraNotFound: 'Câmera não encontrada',
+              cameraError: 'Erro na câmera',
+              networkError: 'Erro de conexão',
+              verificationFailed: 'Verificação falhou',
+              registrationFailed: 'Cadastro falhou',
+            },
+          },
+        },
+        theme: {
+          primaryColor: '#0066FF',
+          borderRadius: '16px',
+        },
+      };
+
+      // Initialize Rekko
+      Rekko.init(rekkoConfig);
+      log(`Rekko ${Rekko.version()} inicializado`, 'success');
+      log(`pk_live: ${DEFAULT_PUBLIC_KEY}`, 'event');
+
+      // Load last UUID if exists
+      const lastUUID = localStorage.getItem('rekko_last_user');
+      if (lastUUID) {
+        document.getElementById('uuidInput').value = lastUUID;
+      }
+
+      // Generate UUID
+      window.generateUUID = () => {
+        const uuid = crypto.randomUUID();
+        document.getElementById('uuidInput').value = uuid;
+        log(`UUID gerado: ${uuid}`, 'event');
+      };
+
+      // Load last UUID
+      window.loadLastUUID = () => {
+        const last = localStorage.getItem('rekko_last_user');
+        if (last) {
+          document.getElementById('uuidInput').value = last;
+          log(`UUID carregado: ${last}`, 'event');
+        } else {
+          log('Nenhum UUID salvo', 'error');
+        }
+      };
+
+      // Get current UUID
+      function getUUID() {
+        let uuid = document.getElementById('uuidInput').value.trim();
+        if (!uuid) {
+          uuid = crypto.randomUUID();
+          document.getElementById('uuidInput').value = uuid;
+          log(`UUID gerado automaticamente: ${uuid}`, 'event');
+        }
+        return uuid;
+      }
+
+      // Register face
+      window.openRegister = () => {
+        const uuid = getUUID();
+        log(`Cadastrando: ${uuid.slice(0, 8)}...`, 'event');
+
+        Rekko.open({
+          mode: 'register',
+          externalId: uuid,
+          onSuccess: (result) => {
+            localStorage.setItem('rekko_last_user', uuid);
+            log(`✅ Cadastrado! Quality: ${(result.qualityScore * 100).toFixed(0)}%`, 'success');
+          },
+          onError: (error) => {
+            log(`❌ Erro: ${error.message}`, 'error');
+          },
+          onEvent: (event) => {
+            log(event.type, 'event');
+          },
+        });
+      };
+
+      // Identify (1:N)
+      window.openIdentify = () => {
+        log('🔍 Buscando pessoa...', 'event');
+
+        Rekko.open({
+          mode: 'identify',
+          skipConsent: true,
+          skipOrientation: true,
+          onSuccess: (result) => {
+            if (result.identified) {
+              log(`✅ Encontrado: ${result.externalId.slice(0, 8)}... (${(result.confidence * 100).toFixed(0)}%)`, 'success');
+            } else {
+              log('❌ Pessoa não encontrada', 'error');
+            }
+          },
+          onError: (error) => {
+            log(`❌ Erro: ${error.message}`, 'error');
+          },
+          onEvent: (event) => {
+            log(event.type, 'event');
+          },
+        });
+      };
+
+    </script>
+  </body>
+</html>
