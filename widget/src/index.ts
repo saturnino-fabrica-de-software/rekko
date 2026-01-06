@@ -12,6 +12,7 @@ export const Rekko: RekkoInstance = {
   close: () => rekkoInstance.close(),
   isInitialized: () => rekkoInstance.isInitialized(),
   version: () => rekkoInstance.version(),
+  getSessionId: () => rekkoInstance.getSessionId(),
 };
 
 if (typeof window !== 'undefined') {

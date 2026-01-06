@@ -257,6 +257,8 @@ export interface RekkoOpenOptions {
   consent?: ConsentConfig;
   /** Skip consent screen if already collected */
   skipConsent?: boolean;
+  /** Skip orientation/instructions screen - go directly to camera */
+  skipOrientation?: boolean;
   /** Custom metadata to attach to result */
   metadata?: Record<string, unknown>;
 }
@@ -266,12 +268,14 @@ export interface RekkoOpenOptions {
 // ============================================================================
 
 export interface RekkoInstance {
-  init: (config: RekkoConfig) => void;
-  open: (options: RekkoOpenOptions) => void;
+  init: (config: RekkoConfig) => Promise<void>;
+  open: (options: RekkoOpenOptions) => Promise<void>;
   close: () => void;
   isInitialized: () => boolean;
   /** Get current version */
   version: () => string;
+  /** Get current session ID */
+  getSessionId: () => string | null;
 }
 
 declare global {

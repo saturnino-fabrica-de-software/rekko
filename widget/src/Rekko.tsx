@@ -11,14 +11,21 @@ import { applyTheme, resetTheme } from '@/styles/theme';
 
 type WidgetState = 'idle' | 'consent' | 'orientation' | 'camera' | 'liveness' | 'processing' | 'result';
 
+interface WidgetSession {
+  sessionId: string;
+  expiresAt: Date;
+}
+
 class RekkoWidget implements RekkoInstance {
   private config: RekkoConfig | null = null;
   private options: RekkoOpenOptions | null = null;
   private container: HTMLElement | null = null;
   private state: WidgetState = 'idle';
   private initialized = false;
+  private session: WidgetSession | null = null;
+  private initError: string | null = null;
 
-  init(config: RekkoConfig): void {
+  async init(config: RekkoConfig): Promise<void> {
     if (!config.publicKey) {
       throw new Error('Rekko: publicKey is required');
     }
@@ -36,24 +43,93 @@ class RekkoWidget implements RekkoInstance {
       apiUrl: 'https://api.rekko.io',
       ...config,
     };
-    this.initialized = true;
+
+    // Validate pk_live and create session
+    try {
+      await this.createSession();
+      this.initialized = true;
+      this.initError = null;
+    } catch (err) {
+      this.initError = err instanceof Error ? err.message : 'Unknown error';
+      throw err;
+    }
   }
 
-  open(options: RekkoOpenOptions): void {
-    if (!this.initialized || !this.config) {
-      throw new Error('Rekko: call init() before open()');
+  private async createSession(): Promise<void> {
+    if (!this.config) {
+      throw new Error('Rekko: config not set');
     }
+
+    const response = await fetch(`${this.config.apiUrl}/v1/widget/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        public_key: this.config.publicKey,
+        origin: window.location.origin,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+      throw new Error(`Rekko: ${error.error?.message || 'Invalid public key'}`);
+    }
+
+    const data = await response.json();
+    this.session = {
+      sessionId: data.session_id,
+      expiresAt: new Date(data.expires_at),
+    };
+  }
+
+  private isSessionExpired(): boolean {
+    if (!this.session) return true;
+    // Add 30 seconds buffer to avoid edge cases
+    return new Date() >= new Date(this.session.expiresAt.getTime() - 30000);
+  }
+
+  getSessionId(): string | null {
+    return this.session?.sessionId ?? null;
+  }
+
+  async open(options: RekkoOpenOptions): Promise<void> {
+    // Validate callbacks first (required for error handling)
     if (!options.onSuccess || !options.onError) {
-      throw new Error('Rekko: onSuccess and onError callbacks are required');
+      console.error('Rekko: onSuccess and onError callbacks are required');
+      return;
     }
+
+    // Check if init was successful
+    if (!this.initialized || !this.config) {
+      const message = this.initError || 'call init() before open()';
+      options.onError({ code: 'INVALID_PUBLIC_KEY', message });
+      return;
+    }
+
     if (options.mode === 'verify' && !options.externalId) {
-      throw new Error('Rekko: externalId is required for verify mode');
+      options.onError({ code: 'UNKNOWN_ERROR', message: 'externalId is required for verify mode' });
+      return;
+    }
+
+    // Renew session if expired
+    try {
+      if (this.isSessionExpired()) {
+        await this.createSession();
+      }
+    } catch (err) {
+      options.onError({ code: 'SESSION_EXPIRED', message: 'Failed to renew session' });
+      return;
     }
 
     this.options = options;
     this.createContainer();
     this.emit('widget_opened');
-    this.setState('consent');
+
+    // Determine starting screen based on skip options
+    let startScreen: WidgetState = 'consent';
+    if (options.skipConsent) {
+      startScreen = options.skipOrientation ? 'camera' : 'orientation';
+    }
+    this.setState(startScreen);
   }
 
   close(): void {

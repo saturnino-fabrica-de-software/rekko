@@ -569,10 +569,15 @@
         },
       };
 
-      // Initialize Rekko
-      Rekko.init(rekkoConfig);
-      log(`Rekko ${Rekko.version()} inicializado`, 'success');
-      log(`pk_live: ${DEFAULT_PUBLIC_KEY}`, 'event');
+      // Initialize Rekko (async - validates pk_live)
+      try {
+        await Rekko.init(rekkoConfig);
+        log(`Rekko ${Rekko.version()} inicializado`, 'success');
+        log(`pk_live: ${DEFAULT_PUBLIC_KEY}`, 'event');
+        log(`session_id: ${Rekko.getSessionId()}`, 'event');
+      } catch (err) {
+        log(`ERRO no init: ${err.message}`, 'error');
+      }
 
       // Load last UUID if exists
       const lastUUID = localStorage.getItem('rekko_last_user');
