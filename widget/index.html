@@ -1,362 +1,201 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Rekko Widget - Development</title>
+    <title>Rekko - POC</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
       * {
         box-sizing: border-box;
+        margin: 0;
+        padding: 0;
       }
+
+      :root {
+        --primary: #0066FF;
+        --secondary: #7C3AED;
+        --success: #059669;
+        --background: #0f172a;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: rgba(255, 255, 255, 0.1);
+      }
+
       body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        padding: 40px;
-        max-width: 900px;
-        margin: 0 auto;
-        background: #f8fafc;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--background);
         min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        color: var(--text);
       }
-      .header {
-        margin-bottom: 32px;
+
+      .container {
+        max-width: 900px;
+        width: 100%;
       }
-      h1 {
-        font-size: 24px;
+
+      .title {
+        font-size: 32px;
         font-weight: 700;
-        color: #0f172a;
-        margin: 0 0 8px;
+        text-align: center;
+        margin-bottom: 40px;
         letter-spacing: -0.02em;
       }
-      .subtitle {
-        color: #64748b;
-        font-size: 15px;
-      }
+
       .cards {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 16px;
-        margin-bottom: 32px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 24px;
       }
+
       .card {
-        background: white;
-        border-radius: 12px;
-        padding: 24px;
-        border: 1px solid #e2e8f0;
-        transition: all 0.2s ease;
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 40px;
+        text-decoration: none;
+        color: inherit;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
       }
+
       .card:hover {
-        border-color: #cbd5e1;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        transform: translateY(-8px);
+        border-color: rgba(255, 255, 255, 0.2);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
       }
+
+      .card-icon {
+        width: 72px;
+        height: 72px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        margin-bottom: 16px;
+      }
+
+      .card.demo .card-icon {
+        background: linear-gradient(135deg, var(--primary) 0%, #00c6ff 100%);
+      }
+
+      .card.admin .card-icon {
+        background: linear-gradient(135deg, var(--secondary) 0%, #f472b6 100%);
+      }
+
       .card-title {
-        font-size: 14px;
+        font-size: 20px;
         font-weight: 600;
-        color: #0f172a;
-        margin-bottom: 8px;
+        letter-spacing: -0.02em;
+        margin-bottom: 12px;
+      }
+
+      .card-description {
+        color: var(--text-muted);
+        font-size: 14px;
+        line-height: 1.6;
+        margin-bottom: 20px;
+      }
+
+      .card-features {
+        list-style: none;
+        margin-bottom: 24px;
+      }
+
+      .card-features li {
+        color: var(--text-muted);
+        font-size: 13px;
+        padding: 6px 0;
+        padding-left: 20px;
+        position: relative;
+      }
+
+      .card-features li::before {
+        content: "✓";
+        position: absolute;
+        left: 0;
+        color: var(--success);
+        font-weight: 600;
+      }
+
+      .card-cta {
+        color: var(--text);
+        font-weight: 500;
+        font-size: 14px;
         display: flex;
         align-items: center;
         gap: 8px;
       }
-      .card-title .badge {
-        font-size: 10px;
-        font-weight: 600;
-        padding: 2px 6px;
-        border-radius: 4px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+
+      .arrow {
+        transition: transform 0.3s ease;
       }
-      .badge-verify {
-        background: #dbeafe;
-        color: #1d4ed8;
+
+      .card:hover .arrow {
+        transform: translateX(4px);
       }
-      .badge-register {
-        background: #dcfce7;
-        color: #15803d;
-      }
-      .card-description {
-        font-size: 13px;
-        color: #64748b;
-        margin-bottom: 16px;
-        line-height: 1.5;
-      }
-      .btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 10px 16px;
-        font-size: 13px;
-        font-weight: 600;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.15s ease;
-        width: 100%;
-      }
-      .btn-primary {
-        background: #0066FF;
-        color: white;
-      }
-      .btn-primary:hover {
-        background: #0052CC;
-      }
-      .btn-secondary {
-        background: #059669;
-        color: white;
-      }
-      .btn-secondary:hover {
-        background: #047857;
-      }
-      .log {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 16px;
-        font-family: 'SF Mono', 'Fira Code', monospace;
-        font-size: 12px;
-        max-height: 300px;
-        overflow-y: auto;
-      }
-      .log-title {
-        font-size: 12px;
-        font-weight: 600;
-        color: #64748b;
-        margin-bottom: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-      }
-      .log-entry {
-        padding: 6px 0;
-        border-bottom: 1px solid #f1f5f9;
-        color: #334155;
-      }
-      .log-entry:last-child {
-        border-bottom: none;
-      }
-      .log-time {
-        color: #94a3b8;
-        margin-right: 8px;
-      }
-      .log-success {
-        color: #059669;
-      }
-      .log-error {
-        color: #dc2626;
-      }
-      .log-event {
-        color: #0066FF;
+
+      @media (max-width: 768px) {
+        .cards {
+          grid-template-columns: 1fr;
+        }
+
+        .card {
+          padding: 32px;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="header">
-      <h1>Rekko Widget</h1>
-      <p class="subtitle">Enterprise Facial Recognition for Ticketing Platforms</p>
-    </div>
+    <div class="container">
+      <h1 class="title">Rekko POC</h1>
 
-    <div class="cards">
-      <div class="card">
-        <div class="card-title">
-          Primeiro Acesso
-          <span class="badge badge-register">Cadastro</span>
-        </div>
-        <p class="card-description">
-          Cadastra a face do usuário na compra do ingresso. Inclui prova de vida.
-        </p>
-        <button class="btn btn-secondary" onclick="openRegister()">
-          Cadastrar Face
-        </button>
+      <div class="cards">
+        <a href="demo/client.html" class="card demo">
+          <div class="card-icon">🎫</div>
+          <h2 class="card-title">Demonstração</h2>
+          <p class="card-description">
+            Experimente o fluxo completo como seu cliente final:
+            cadastro facial na compra e entrada VIP no evento.
+          </p>
+          <ul class="card-features">
+            <li>Cadastro facial em 3 segundos</li>
+            <li>Liveness detection anti-spoofing</li>
+            <li>Identificação 1:N sem ingresso</li>
+            <li>Widget white-label customizável</li>
+          </ul>
+          <div class="card-cta">
+            Iniciar Demo <span class="arrow">→</span>
+          </div>
+        </a>
+
+        <a href="admin/login.html" class="card admin">
+          <div class="card-icon">⚙️</div>
+          <h2 class="card-title">Painel Admin</h2>
+          <p class="card-description">
+            Acesse o painel administrativo para gerenciar faces,
+            visualizar métricas e configurar webhooks.
+          </p>
+          <ul class="card-features">
+            <li>Dashboard de métricas em tempo real</li>
+            <li>Gestão de faces cadastradas</li>
+            <li>Configuração de webhooks</li>
+            <li>API completa com sk_live</li>
+          </ul>
+          <div class="card-cta">
+            Acessar Admin <span class="arrow">→</span>
+          </div>
+        </a>
       </div>
-
-      <div class="card">
-        <div class="card-title">
-          Entrada VIP
-          <span class="badge" style="background: #fef3c7; color: #92400e;">1:N</span>
-        </div>
-        <p class="card-description">
-          Passou, entrou! Identifica automaticamente sem precisar mostrar ingresso.
-        </p>
-        <button class="btn" style="background: #f59e0b; color: white;" onclick="openIdentify()">
-          Entrar sem Ingresso
-        </button>
-      </div>
     </div>
-
-    <div class="log-title">Event Log</div>
-    <div class="log" id="log">
-      <div class="log-entry">Aguardando eventos...</div>
-    </div>
-
-    <script type="module">
-      import { Rekko } from './src/index.ts';
-
-      // Initialize Rekko with configuration
-      Rekko.init({
-        apiUrl: 'http://localhost:3000',
-        publicKey: 'pk_test_widgetdev12345678901234567890',
-        locale: 'pt-BR',
-        texts: {
-          'pt-BR': {
-            consent: {
-              title: 'Verificação Facial',
-              body: 'Para sua segurança, precisamos verificar sua identidade através de reconhecimento facial.',
-              accept: 'Continuar Verificação',
-              decline: 'Cancelar',
-            },
-            orientation: {
-              title: 'Posicione seu Rosto',
-              subtitle: 'Siga as instruções para uma captura de qualidade',
-              instructions: {
-                neutral: 'Mantenha expressão neutra',
-                visible: 'Rosto totalmente visível',
-                lighting: 'Ambiente bem iluminado',
-                framing: 'Centralize na tela',
-              },
-              continue: 'Iniciar Câmera',
-            },
-            camera: {
-              title: 'Posicione seu Rosto',
-              instruction: 'Centralize seu rosto no círculo',
-              positioning: 'Ajustando...',
-              capturing: 'Capturando...',
-            },
-            liveness: {
-              title: 'Verificação de Vivacidade',
-              challenges: {
-                turn_left: 'Vire a cabeça para a esquerda',
-                turn_right: 'Vire a cabeça para a direita',
-                blink: 'Pisque os olhos',
-              },
-              success: 'Verificação concluída!',
-              failed: 'Verificação falhou. Tente novamente.',
-              timeout: 'Tempo esgotado. Tente novamente.',
-              retry: 'Tentar Novamente',
-              skip: 'Pular',
-            },
-            processing: {
-              title: 'Processando',
-              message: 'Verificando sua identidade...',
-            },
-            result: {
-              successTitle: 'Verificado!',
-              successMessage: 'Sua identidade foi confirmada.',
-              errorTitle: 'Não Verificado',
-              errorMessage: 'Não foi possível verificar sua identidade.',
-              retry: 'Tentar Novamente',
-              close: 'Fechar',
-            },
-            errors: {
-              cameraPermission: 'Permissão da câmera negada',
-              cameraNotFound: 'Nenhuma câmera encontrada',
-              cameraError: 'Erro ao acessar a câmera',
-              networkError: 'Erro de conexão',
-              verificationFailed: 'Falha na verificação',
-              registrationFailed: 'Falha no cadastro',
-            },
-          },
-        },
-        theme: {
-          primaryColor: '#0066FF',
-          borderRadius: '16px',
-        },
-      });
-
-      // Store the last registered user for verification
-      let lastRegisteredUser = localStorage.getItem('rekko_last_user') || 'demo-user-001';
-
-      // Verify mode
-      window.openVerify = () => {
-        clearLog();
-        log(`Verificando usuário: ${lastRegisteredUser}`, 'event');
-
-        Rekko.open({
-          mode: 'verify',
-          externalId: lastRegisteredUser,
-          consent: {
-            privacyPolicyUrl: 'https://rekko.io/privacy',
-          },
-          onSuccess: (result) => {
-            log(`SUCESSO: Verificado com ${Math.round((result.confidence || 0) * 100)}% de confiança`, 'success');
-          },
-          onError: (error) => {
-            log(`ERRO: ${error.message} (${error.code})`, 'error');
-          },
-          onEvent: (event) => {
-            log(`${event.type}`, 'event');
-          },
-        });
-      };
-
-      // Register mode
-      window.openRegister = () => {
-        clearLog();
-        const newUserId = 'user-' + Date.now();
-        log(`Cadastrando novo usuário: ${newUserId}`, 'event');
-
-        Rekko.open({
-          mode: 'register',
-          externalId: newUserId,
-          consent: {
-            privacyPolicyUrl: 'https://rekko.io/privacy',
-          },
-          onSuccess: (result) => {
-            // Save for later verification
-            lastRegisteredUser = newUserId;
-            localStorage.setItem('rekko_last_user', newUserId);
-            log(`SUCESSO: Face cadastrada para ${newUserId}`, 'success');
-          },
-          onError: (error) => {
-            log(`ERRO: ${error.message} (${error.code})`, 'error');
-          },
-          onEvent: (event) => {
-            log(`${event.type}`, 'event');
-          },
-        });
-      };
-
-      // Identify mode - "Passou, entrou!" - No ID required
-      window.openIdentify = () => {
-        clearLog();
-        log('🔍 Identificando pessoa pela face...', 'event');
-
-        Rekko.open({
-          mode: 'identify',
-          consent: {
-            privacyPolicyUrl: 'https://rekko.io/privacy',
-          },
-          onSuccess: (result) => {
-            if (result.identified) {
-              log(`✅ IDENTIFICADO: ${result.externalId} (${Math.round((result.confidence || 0) * 100)}% confiança)`, 'success');
-            } else {
-              log(`❌ Pessoa não encontrada no sistema`, 'error');
-            }
-          },
-          onError: (error) => {
-            log(`ERRO: ${error.message} (${error.code})`, 'error');
-          },
-          onEvent: (event) => {
-            log(`${event.type}`, 'event');
-          },
-        });
-      };
-
-      function log(message, type = '') {
-        const logEl = document.getElementById('log');
-        const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        const entry = document.createElement('div');
-        entry.className = `log-entry ${type ? 'log-' + type : ''}`;
-        entry.innerHTML = `<span class="log-time">${time}</span>${message}`;
-        logEl.appendChild(entry);
-        logEl.scrollTop = logEl.scrollHeight;
-      }
-
-      function clearLog() {
-        const logEl = document.getElementById('log');
-        logEl.innerHTML = '';
-      }
-
-      log('Rekko v' + Rekko.version() + ' inicializado', 'success');
-    </script>
   </body>
 </html>
