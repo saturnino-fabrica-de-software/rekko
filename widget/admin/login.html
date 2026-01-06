@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rekko Admin - Login</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --primary: #7C3AED;
+        --primary-dark: #6D28D9;
+        --secondary: #0066FF;
+        --background: #0f172a;
+        --text: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: rgba(255, 255, 255, 0.1);
+      }
+
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: var(--background);
+        min-height: 100vh;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      .bg-gradient {
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 80% 50% at 50% -20%, rgba(124, 58, 237, 0.3), transparent),
+          radial-gradient(ellipse 60% 40% at 0% 100%, rgba(0, 102, 255, 0.2), transparent);
+        pointer-events: none;
+      }
+
+      .login-container {
+        position: relative;
+        z-index: 10;
+        width: 100%;
+        max-width: 400px;
+      }
+
+      .back-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 14px;
+        color: var(--text-muted);
+        text-decoration: none;
+        margin-bottom: 32px;
+        transition: color 0.2s;
+      }
+
+      .back-link:hover {
+        color: var(--text);
+      }
+
+      .login-card {
+        background: rgba(255, 255, 255, 0.03);
+        backdrop-filter: blur(20px);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 48px 40px;
+      }
+
+      .login-header {
+        text-align: center;
+        margin-bottom: 32px;
+      }
+
+      .login-title {
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 8px;
+      }
+
+      .login-subtitle {
+        font-size: 14px;
+        color: var(--text-muted);
+      }
+
+      /* Demo credentials */
+      .demo-credentials {
+        background: rgba(124, 58, 237, 0.1);
+        border: 1px solid rgba(124, 58, 237, 0.3);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 24px;
+        text-align: center;
+      }
+
+      .demo-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--primary);
+        margin-bottom: 8px;
+      }
+
+      .demo-creds {
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      .demo-creds strong {
+        color: var(--text);
+      }
+
+      /* Form */
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      .form-input {
+        width: 100%;
+        padding: 14px 16px;
+        font-size: 15px;
+        font-family: inherit;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        color: var(--text);
+        transition: all 0.2s;
+      }
+
+      .form-input::placeholder {
+        color: #475569;
+      }
+
+      .form-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        background: rgba(255, 255, 255, 0.08);
+      }
+
+      .btn-login {
+        width: 100%;
+        padding: 16px;
+        font-size: 15px;
+        font-weight: 600;
+        font-family: inherit;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+        border: none;
+        border-radius: 12px;
+        color: white;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .btn-login:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(124, 58, 237, 0.4);
+      }
+
+      .error-message {
+        background: rgba(220, 38, 38, 0.1);
+        border: 1px solid rgba(220, 38, 38, 0.3);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: #fca5a5;
+        display: none;
+        text-align: center;
+      }
+
+      .error-message.show {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bg-gradient"></div>
+
+    <div class="login-container">
+      <a href="../index.html" class="back-link">
+        ← Voltar
+      </a>
+
+      <div class="login-card">
+        <div class="login-header">
+          <h1 class="login-title">Painel Admin</h1>
+          <p class="login-subtitle">Acesse o painel administrativo</p>
+        </div>
+
+        <div class="demo-credentials">
+          <div class="demo-title">Credenciais de Demo</div>
+          <p class="demo-creds">
+            <strong>admin@rekko.io</strong> / <strong>admin</strong>
+          </p>
+        </div>
+
+        <div class="error-message" id="errorMessage">
+          Credenciais inválidas
+        </div>
+
+        <form onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input
+              type="email"
+              class="form-input"
+              id="email"
+              value="admin@rekko.io"
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Senha</label>
+            <input
+              type="password"
+              class="form-input"
+              id="password"
+              value="admin"
+              required
+            >
+          </div>
+
+          <button type="submit" class="btn-login">
+            Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      async function handleLogin(event) {
+        event.preventDefault();
+
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const errorMessage = document.getElementById('errorMessage');
+
+        errorMessage.classList.remove('show');
+
+        // Simulated validation
+        if (email === 'admin@rekko.io' && password === 'admin') {
+          sessionStorage.setItem('rekko_admin', 'true');
+          window.location.href = 'dashboard.html';
+        } else {
+          errorMessage.classList.add('show');
+        }
+      }
+    </script>
+  </body>
+</html>
