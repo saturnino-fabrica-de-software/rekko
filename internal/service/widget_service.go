@@ -196,6 +196,35 @@ func (s *WidgetService) Search(ctx context.Context, sessionID uuid.UUID, imageBy
 	return result, nil
 }
 
+// CheckRegistration checks if a face is registered for an external_id within a session's tenant
+// This allows clients to check registration status before opening the widget
+// Returns registration info if exists, nil if not registered
+func (s *WidgetService) CheckRegistration(ctx context.Context, sessionID uuid.UUID, externalID string) (*domain.RegistrationCheck, error) {
+	// 1. Validate session
+	session, err := s.ValidateSession(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Check if face exists for this external_id
+	face, err := s.faceService.GetByExternalID(ctx, session.TenantID, externalID)
+	if err != nil {
+		// Not found is not an error - just means not registered
+		if err == domain.ErrFaceNotFound {
+			return &domain.RegistrationCheck{
+				Registered: false,
+			}, nil
+		}
+		return nil, fmt.Errorf("tenant %s: check registration: %w", session.TenantID, err)
+	}
+
+	// 3. Return registration info
+	return &domain.RegistrationCheck{
+		Registered:   true,
+		RegisteredAt: &face.CreatedAt,
+	}, nil
+}
+
 // CleanupExpiredSessions removes all expired sessions
 // This should be called periodically (e.g., via cron job)
 func (s *WidgetService) CleanupExpiredSessions(ctx context.Context) (int64, error) {

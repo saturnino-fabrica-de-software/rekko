@@ -75,6 +75,12 @@ var (
 		StatusCode: 409,
 	}
 
+	ErrFaceBiometricExists = &AppError{
+		Code:       "FACE_BIOMETRIC_EXISTS",
+		Message:    "This face is already registered with another identity",
+		StatusCode: 409,
+	}
+
 	ErrInvalidImage = &AppError{
 		Code:       "INVALID_IMAGE",
 		Message:    "Invalid image format or corrupted file",

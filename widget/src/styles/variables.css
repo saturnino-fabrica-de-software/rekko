@@ -146,7 +146,8 @@
   cursor: pointer;
   border: none;
   outline: none;
-  background: none;
+  background-color: transparent;
+  color: inherit;
 }
 
 .rekko-widget button:focus-visible {

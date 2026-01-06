@@ -220,11 +220,11 @@ func (s *Service) GetLatencyMetrics(ctx context.Context, tenantID uuid.UUID, par
 	// Get overall latency percentiles from verifications
 	var avgMs, p50Ms, p95Ms, p99Ms float64
 	err := s.db.QueryRow(ctx, `
-		SELECT 
-			AVG(latency_ms) as avg_ms,
-			PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency_ms) as p50_ms,
-			PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) as p95_ms,
-			PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms) as p99_ms
+		SELECT
+			COALESCE(AVG(latency_ms), 0) as avg_ms,
+			COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency_ms), 0) as p50_ms,
+			COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95_ms,
+			COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0) as p99_ms
 		FROM verifications
 		WHERE tenant_id = $1
 		  AND created_at BETWEEN $2 AND $3
@@ -235,14 +235,14 @@ func (s *Service) GetLatencyMetrics(ctx context.Context, tenantID uuid.UUID, par
 
 	// Timeline of latency metrics
 	rows, err := s.db.Query(ctx, `
-		SELECT 
+		SELECT
 			date_trunc($1, created_at) as period,
-			AVG(latency_ms) as avg_ms,
-			PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency_ms) as p50_ms,
-			PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms) as p95_ms,
-			PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms) as p99_ms
+			COALESCE(AVG(latency_ms), 0) as avg_ms,
+			COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY latency_ms), 0) as p50_ms,
+			COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency_ms), 0) as p95_ms,
+			COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY latency_ms), 0) as p99_ms
 		FROM verifications
-		WHERE tenant_id = $2 
+		WHERE tenant_id = $2
 		  AND created_at BETWEEN $3 AND $4
 		GROUP BY period
 		ORDER BY period ASC
@@ -427,10 +427,10 @@ func (s *Service) GetQualityMetrics(ctx context.Context, tenantID uuid.UUID, par
 	// Get overall quality statistics
 	var avgQuality, minQuality, maxQuality float64
 	err := s.db.QueryRow(ctx, `
-		SELECT 
-			AVG(quality_score) as avg_quality,
-			MIN(quality_score) as min_quality,
-			MAX(quality_score) as max_quality
+		SELECT
+			COALESCE(AVG(quality_score), 0) as avg_quality,
+			COALESCE(MIN(quality_score), 0) as min_quality,
+			COALESCE(MAX(quality_score), 0) as max_quality
 		FROM faces
 		WHERE tenant_id = $1
 		  AND created_at BETWEEN $2 AND $3
@@ -441,13 +441,13 @@ func (s *Service) GetQualityMetrics(ctx context.Context, tenantID uuid.UUID, par
 
 	// Timeline of quality metrics
 	rows, err := s.db.Query(ctx, `
-		SELECT 
+		SELECT
 			date_trunc($1, created_at) as period,
-			AVG(quality_score) as avg_quality,
-			MIN(quality_score) as min_quality,
-			MAX(quality_score) as max_quality
+			COALESCE(AVG(quality_score), 0) as avg_quality,
+			COALESCE(MIN(quality_score), 0) as min_quality,
+			COALESCE(MAX(quality_score), 0) as max_quality
 		FROM faces
-		WHERE tenant_id = $2 
+		WHERE tenant_id = $2
 		  AND created_at BETWEEN $3 AND $4
 		GROUP BY period
 		ORDER BY period ASC
@@ -487,10 +487,10 @@ func (s *Service) GetConfidenceMetrics(ctx context.Context, tenantID uuid.UUID, 
 	// Get overall confidence statistics
 	var avgConfidence, minConfidence, maxConfidence float64
 	err := s.db.QueryRow(ctx, `
-		SELECT 
-			AVG(confidence) as avg_confidence,
-			MIN(confidence) as min_confidence,
-			MAX(confidence) as max_confidence
+		SELECT
+			COALESCE(AVG(confidence), 0) as avg_confidence,
+			COALESCE(MIN(confidence), 0) as min_confidence,
+			COALESCE(MAX(confidence), 0) as max_confidence
 		FROM verifications
 		WHERE tenant_id = $1
 		  AND created_at BETWEEN $2 AND $3
@@ -501,13 +501,13 @@ func (s *Service) GetConfidenceMetrics(ctx context.Context, tenantID uuid.UUID, 
 
 	// Timeline of confidence metrics
 	rows, err := s.db.Query(ctx, `
-		SELECT 
+		SELECT
 			date_trunc($1, created_at) as period,
-			AVG(confidence) as avg_confidence,
-			MIN(confidence) as min_confidence,
-			MAX(confidence) as max_confidence
+			COALESCE(AVG(confidence), 0) as avg_confidence,
+			COALESCE(MIN(confidence), 0) as min_confidence,
+			COALESCE(MAX(confidence), 0) as max_confidence
 		FROM verifications
-		WHERE tenant_id = $2 
+		WHERE tenant_id = $2
 		  AND created_at BETWEEN $3 AND $4
 		GROUP BY period
 		ORDER BY period ASC
@@ -548,10 +548,10 @@ func (s *Service) GetMatchMetrics(ctx context.Context, tenantID uuid.UUID, param
 	var totalMatches, totalVerifications int64
 	var avgMatchScore float64
 	err := s.db.QueryRow(ctx, `
-		SELECT 
+		SELECT
 			COUNT(*) FILTER (WHERE verified = true) as total_matches,
 			COUNT(*) as total_verifications,
-			AVG(confidence) FILTER (WHERE verified = true) as avg_match_score
+			COALESCE(AVG(confidence) FILTER (WHERE verified = true), 0) as avg_match_score
 		FROM verifications
 		WHERE tenant_id = $1
 		  AND created_at BETWEEN $2 AND $3
@@ -567,14 +567,14 @@ func (s *Service) GetMatchMetrics(ctx context.Context, tenantID uuid.UUID, param
 
 	// Timeline of match metrics
 	rows, err := s.db.Query(ctx, `
-		SELECT 
+		SELECT
 			date_trunc($1, created_at) as period,
 			COUNT(*) FILTER (WHERE verified = true) as matches,
 			COUNT(*) as total,
-			(COUNT(*) FILTER (WHERE verified = true))::float / NULLIF(COUNT(*), 0) * 100 as match_rate,
-			AVG(confidence) FILTER (WHERE verified = true) as avg_match_score
+			COALESCE((COUNT(*) FILTER (WHERE verified = true))::float / NULLIF(COUNT(*), 0) * 100, 0) as match_rate,
+			COALESCE(AVG(confidence) FILTER (WHERE verified = true), 0) as avg_match_score
 		FROM verifications
-		WHERE tenant_id = $2 
+		WHERE tenant_id = $2
 		  AND created_at BETWEEN $3 AND $4
 		GROUP BY period
 		ORDER BY period ASC

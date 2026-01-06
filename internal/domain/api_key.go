@@ -18,6 +18,12 @@ const (
 	EnvLive = "live"
 )
 
+// Key type constants
+const (
+	KeyTypeSecret = "sk" // Secret key for server-side API access
+	KeyTypePublic = "pk" // Public key for client-side (widget) access
+)
+
 const (
 	apiKeyLength = 32
 	base62Chars  = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -27,6 +33,10 @@ var (
 	validEnvironments = map[string]bool{
 		EnvTest: true,
 		EnvLive: true,
+	}
+	validKeyTypes = map[string]bool{
+		KeyTypeSecret: true,
+		KeyTypePublic: true,
 	}
 )
 
@@ -45,9 +55,14 @@ type APIKey struct {
 
 // GenerateAPIKey gera uma nova API key com hash e prefix
 // Retorna: (plainKey, hash, prefix)
-func GenerateAPIKey(env string) (string, string, string, error) {
+// Formato: <keyType>_<env>_<random32>
+// Exemplo: sk_test_abc123xyz789 (for testing)
+func GenerateAPIKey(keyType, env string) (string, string, string, error) {
+	if !validKeyTypes[keyType] {
+		return "", "", "", errors.New("invalid key type: must be 'sk' or 'pk'")
+	}
 	if !validEnvironments[env] {
-		return "", "", "", errors.New("invalid environment")
+		return "", "", "", errors.New("invalid environment: must be 'test' or 'live'")
 	}
 
 	randomPart, err := generateSecureRandomString(apiKeyLength)
@@ -55,12 +70,14 @@ func GenerateAPIKey(env string) (string, string, string, error) {
 		return "", "", "", err
 	}
 
-	prefix := "rekko_" + env + "_"
+	// Format: sk_live_<random> or pk_test_<random>
+	prefix := keyType + "_" + env + "_"
 	plainKey := prefix + randomPart
 
 	hash := HashAPIKey(plainKey)
 
-	keyPrefix := plainKey[:16]
+	// Key prefix for display: sk_live_A1b2C3
+	keyPrefix := plainKey[:14]
 
 	return plainKey, hash, keyPrefix, nil
 }
@@ -72,13 +89,16 @@ func HashAPIKey(key string) string {
 }
 
 // IsValidFormat verifica se a API key tem o formato correto
+// Formato esperado: <keyType>_<env>_<random32>
+// Exemplo: pk_test_abc123xyz789 (for testing)
 func IsValidFormat(key string) bool {
-	if !strings.HasPrefix(key, "rekko_") {
+	parts := strings.SplitN(key, "_", 3)
+	if len(parts) != 3 {
 		return false
 	}
 
-	parts := strings.SplitN(key, "_", 3)
-	if len(parts) != 3 {
+	keyType := parts[0]
+	if !validKeyTypes[keyType] {
 		return false
 	}
 

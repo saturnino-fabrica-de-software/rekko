@@ -21,6 +21,7 @@ type WidgetService interface {
 	Register(ctx context.Context, sessionID uuid.UUID, externalID string, imageBytes []byte) (*domain.Face, error)
 	ValidateLiveness(ctx context.Context, sessionID uuid.UUID, imageBytes []byte) (*domain.LivenessResult, error)
 	Search(ctx context.Context, sessionID uuid.UUID, imageBytes []byte, clientIP string) (*domain.SearchResult, error)
+	CheckRegistration(ctx context.Context, sessionID uuid.UUID, externalID string) (*domain.RegistrationCheck, error)
 }
 
 // WidgetHandler handles widget-related requests
@@ -299,7 +300,6 @@ func (h *WidgetHandler) ValidateLiveness(c *fiber.Ctx) error {
 type WidgetSearchResponse struct {
 	Identified bool    `json:"identified"`
 	ExternalID string  `json:"external_id,omitempty"`
-	FaceID     string  `json:"face_id,omitempty"`
 	Confidence float64 `json:"confidence,omitempty"`
 }
 
@@ -373,7 +373,58 @@ func (h *WidgetHandler) Search(c *fiber.Ctx) error {
 	return c.JSON(WidgetSearchResponse{
 		Identified: true,
 		ExternalID: match.ExternalID,
-		FaceID:     match.FaceID.String(),
 		Confidence: match.Similarity,
 	})
+}
+
+// CheckRegistrationResponse response for registration check
+type CheckRegistrationResponse struct {
+	Registered   bool   `json:"registered"`
+	RegisteredAt string `json:"registered_at,omitempty"`
+}
+
+// CheckRegistration GET /v1/widget/check - check if external_id is registered
+// @Summary Check if face is registered
+// @Description Checks if a face is already registered for the given external_id
+// @Tags widget
+// @Produce json
+// @Param session_id query string true "Widget session ID"
+// @Param external_id query string true "External user ID to check"
+// @Success 200 {object} CheckRegistrationResponse
+// @Failure 400 {object} domain.AppError
+// @Failure 401 {object} domain.AppError
+// @Router /v1/widget/check [get]
+func (h *WidgetHandler) CheckRegistration(c *fiber.Ctx) error {
+	// 1. Extract session_id from query
+	sessionIDStr := strings.TrimSpace(c.Query("session_id"))
+	if sessionIDStr == "" {
+		return domain.ErrValidationFailed.WithError(errors.New("session_id is required"))
+	}
+
+	sessionID, err := uuid.Parse(sessionIDStr)
+	if err != nil {
+		return domain.ErrValidationFailed.WithError(fmt.Errorf("invalid session_id format: %w", err))
+	}
+
+	// 2. Extract external_id from query
+	externalID := strings.TrimSpace(c.Query("external_id"))
+	if externalID == "" {
+		return domain.ErrValidationFailed.WithError(errors.New("external_id is required"))
+	}
+
+	// 3. Call service to check registration
+	result, err := h.service.CheckRegistration(c.Context(), sessionID, externalID)
+	if err != nil {
+		return err
+	}
+
+	// 4. Build response
+	response := CheckRegistrationResponse{
+		Registered: result.Registered,
+	}
+	if result.RegisteredAt != nil {
+		response.RegisteredAt = result.RegisteredAt.Format(time.RFC3339)
+	}
+
+	return c.JSON(response)
 }

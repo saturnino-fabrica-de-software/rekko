@@ -143,10 +143,12 @@ func (r *Router) Setup() {
 		faceHandler := handler.NewFaceHandler(faceService, usageRepo, webhookService, r.logger)
 
 		// Face routes (authenticated)
+		authedV1.Get("/faces", faceHandler.List)
 		authedV1.Post("/faces", faceHandler.Register)
 		authedV1.Post("/faces/verify", faceHandler.Verify)
 		authedV1.Post("/faces/search", faceHandler.Search)
 		authedV1.Post("/faces/liveness", faceHandler.CheckLiveness)
+		authedV1.Get("/faces/:external_id", faceHandler.GetByExternalID)
 		authedV1.Delete("/faces/:external_id", faceHandler.Delete)
 
 		// Usage service
@@ -188,6 +190,7 @@ func (r *Router) setupAdminRoutes(adminGroup fiber.Router, webhookService *webho
 	performanceHandler := adminHandler.NewMetricsPerformanceHandler(adminService, r.logger)
 	qualityHandler := adminHandler.NewMetricsQualityHandler(adminService, r.logger)
 	webhooksHandler := adminHandler.NewWebhooksHandler(webhookService, r.logger)
+	apiKeysHandler := adminHandler.NewAPIKeysHandler(r.deps.DB, r.logger)
 
 	// Metrics group
 	metricsGroup := adminGroup.Group("/metrics")
@@ -211,6 +214,9 @@ func (r *Router) setupAdminRoutes(adminGroup fiber.Router, webhookService *webho
 	adminGroup.Get("/webhooks", webhooksHandler.List)
 	adminGroup.Post("/webhooks", webhooksHandler.Create)
 	adminGroup.Delete("/webhooks/:id", webhooksHandler.Delete)
+
+	// API Keys routes
+	adminGroup.Get("/api-keys", apiKeysHandler.List)
 }
 
 func (r *Router) setupSuperAdminRoutes(v1Group fiber.Router) {
@@ -274,6 +280,7 @@ func (r *Router) setupWidgetRoutes(faceService *service.FaceService, usageRepo *
 	widgetGroup.Post("/register", widgetHandler.Register)
 	widgetGroup.Post("/validate", widgetHandler.ValidateLiveness)
 	widgetGroup.Post("/search", widgetHandler.Search)
+	widgetGroup.Get("/check", widgetHandler.CheckRegistration)
 }
 
 func (r *Router) App() *fiber.App {

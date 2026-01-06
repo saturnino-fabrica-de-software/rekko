@@ -129,7 +129,7 @@ func (m *MockAPIKeyRepo) Delete(ctx context.Context, id uuid.UUID) error {
 
 func TestAuth(t *testing.T) {
 	// Generate valid API key for testing
-	validAPIKey, validHash, validPrefix, err := domain.GenerateAPIKey(domain.EnvTest)
+	validAPIKey, validHash, validPrefix, err := domain.GenerateAPIKey(domain.KeyTypeSecret, domain.EnvTest)
 	assert.NoError(t, err)
 
 	tenantID := uuid.New()

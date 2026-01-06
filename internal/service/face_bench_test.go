@@ -364,6 +364,10 @@ func BenchmarkFaceService_Register(b *testing.B) {
 			FaceCount:     1,
 		}, nil)
 
+	// New face registration - GetByExternalID returns not found
+	faceRepo.On("GetByExternalID", mock.Anything, tenantID, mock.Anything).
+		Return(nil, domain.ErrFaceNotFound)
+
 	faceRepo.On("Create", mock.Anything, mock.Anything).
 		Return(nil)
 

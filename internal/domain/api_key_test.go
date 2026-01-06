@@ -10,29 +10,51 @@ import (
 func TestGenerateAPIKey(t *testing.T) {
 	tests := []struct {
 		name    string
+		keyType string
 		env     string
 		wantErr bool
 	}{
 		{
-			name:    "generate test key",
+			name:    "generate secret test key",
+			keyType: KeyTypeSecret,
 			env:     EnvTest,
 			wantErr: false,
 		},
 		{
-			name:    "generate live key",
+			name:    "generate secret live key",
+			keyType: KeyTypeSecret,
+			env:     EnvLive,
+			wantErr: false,
+		},
+		{
+			name:    "generate public test key",
+			keyType: KeyTypePublic,
+			env:     EnvTest,
+			wantErr: false,
+		},
+		{
+			name:    "generate public live key",
+			keyType: KeyTypePublic,
 			env:     EnvLive,
 			wantErr: false,
 		},
 		{
 			name:    "invalid environment",
+			keyType: KeyTypeSecret,
 			env:     "invalid",
+			wantErr: true,
+		},
+		{
+			name:    "invalid key type",
+			keyType: "invalid",
+			env:     EnvTest,
 			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			plainKey, hash, prefix, err := GenerateAPIKey(tt.env)
+			plainKey, hash, prefix, err := GenerateAPIKey(tt.keyType, tt.env)
 
 			if tt.wantErr {
 				if err == nil {
@@ -46,7 +68,8 @@ func TestGenerateAPIKey(t *testing.T) {
 				return
 			}
 
-			expectedPrefix := "rekko_" + tt.env + "_"
+			// Expected format: sk_live_<random32>
+			expectedPrefix := tt.keyType + "_" + tt.env + "_"
 			if !strings.HasPrefix(plainKey, expectedPrefix) {
 				t.Errorf("plainKey prefix = %s, want prefix %s", plainKey[:len(expectedPrefix)], expectedPrefix)
 			}
@@ -59,8 +82,9 @@ func TestGenerateAPIKey(t *testing.T) {
 				t.Errorf("hash is empty")
 			}
 
-			if prefix != plainKey[:16] {
-				t.Errorf("prefix = %s, want %s", prefix, plainKey[:16])
+			// Prefix should be first 14 chars (sk_live_A1b2C3)
+			if prefix != plainKey[:14] {
+				t.Errorf("prefix = %s, want %s", prefix, plainKey[:14])
 			}
 
 			if !IsValidFormat(plainKey) {
@@ -71,7 +95,7 @@ func TestGenerateAPIKey(t *testing.T) {
 }
 
 func TestHashAPIKey(t *testing.T) {
-	key := "rekko_test_ABC123XYZ789"
+	key := "sk_test_ABC123XYZ789ABC123XYZ789ABC12345"
 
 	hash1 := HashAPIKey(key)
 	hash2 := HashAPIKey(key)
@@ -92,43 +116,58 @@ func TestIsValidFormat(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "valid test key",
-			key:  "rekko_test_" + strings.Repeat("A", apiKeyLength),
+			name: "valid secret test key",
+			key:  "sk_test_" + strings.Repeat("A", apiKeyLength),
 			want: true,
 		},
 		{
-			name: "valid live key",
-			key:  "rekko_live_" + strings.Repeat("B", apiKeyLength),
+			name: "valid secret live key",
+			key:  "sk_live_" + strings.Repeat("B", apiKeyLength),
 			want: true,
 		},
 		{
-			name: "invalid prefix",
-			key:  "invalid_test_" + strings.Repeat("A", apiKeyLength),
+			name: "valid public test key",
+			key:  "pk_test_" + strings.Repeat("C", apiKeyLength),
+			want: true,
+		},
+		{
+			name: "valid public live key",
+			key:  "pk_live_" + strings.Repeat("D", apiKeyLength),
+			want: true,
+		},
+		{
+			name: "invalid key type",
+			key:  "xx_test_" + strings.Repeat("A", apiKeyLength),
 			want: false,
 		},
 		{
 			name: "invalid environment",
-			key:  "rekko_prod_" + strings.Repeat("A", apiKeyLength),
+			key:  "sk_prod_" + strings.Repeat("A", apiKeyLength),
 			want: false,
 		},
 		{
 			name: "too short",
-			key:  "rekko_test_ABC",
+			key:  "sk_test_ABC",
 			want: false,
 		},
 		{
 			name: "too long",
-			key:  "rekko_test_" + strings.Repeat("A", apiKeyLength+10),
+			key:  "sk_test_" + strings.Repeat("A", apiKeyLength+10),
 			want: false,
 		},
 		{
 			name: "invalid characters",
-			key:  "rekko_test_" + strings.Repeat("!", apiKeyLength),
+			key:  "sk_test_" + strings.Repeat("!", apiKeyLength),
 			want: false,
 		},
 		{
 			name: "missing parts",
-			key:  "rekko_test",
+			key:  "sk_test",
+			want: false,
+		},
+		{
+			name: "old format with rekko prefix - invalid",
+			key:  "rekko_sk_test_" + strings.Repeat("A", apiKeyLength),
 			want: false,
 		},
 	}
@@ -157,7 +196,7 @@ func TestAPIKey_Validate(t *testing.T) {
 				TenantID:    validTenantID,
 				Name:        "Test Key",
 				KeyHash:     "hash123",
-				KeyPrefix:   "rekko_test_ABCD",
+				KeyPrefix:   "sk_test_ABCD12",
 				Environment: EnvTest,
 			},
 			wantErr: false,
@@ -167,7 +206,7 @@ func TestAPIKey_Validate(t *testing.T) {
 			apiKey: APIKey{
 				Name:        "Test Key",
 				KeyHash:     "hash123",
-				KeyPrefix:   "rekko_test_ABCD",
+				KeyPrefix:   "sk_test_ABCD12",
 				Environment: EnvTest,
 			},
 			wantErr: true,
@@ -177,7 +216,7 @@ func TestAPIKey_Validate(t *testing.T) {
 			apiKey: APIKey{
 				TenantID:    validTenantID,
 				KeyHash:     "hash123",
-				KeyPrefix:   "rekko_test_ABCD",
+				KeyPrefix:   "sk_test_ABCD12",
 				Environment: EnvTest,
 			},
 			wantErr: true,
@@ -187,7 +226,7 @@ func TestAPIKey_Validate(t *testing.T) {
 			apiKey: APIKey{
 				TenantID:    validTenantID,
 				Name:        "Test Key",
-				KeyPrefix:   "rekko_test_ABCD",
+				KeyPrefix:   "sk_test_ABCD12",
 				Environment: EnvTest,
 			},
 			wantErr: true,
@@ -208,7 +247,7 @@ func TestAPIKey_Validate(t *testing.T) {
 				TenantID:    validTenantID,
 				Name:        "Test Key",
 				KeyHash:     "hash123",
-				KeyPrefix:   "rekko_test_ABCD",
+				KeyPrefix:   "sk_test_ABCD12",
 				Environment: "invalid",
 			},
 			wantErr: true,
@@ -230,7 +269,7 @@ func TestGenerateAPIKey_Uniqueness(t *testing.T) {
 	iterations := 1000
 
 	for i := 0; i < iterations; i++ {
-		plainKey, _, _, err := GenerateAPIKey(EnvTest)
+		plainKey, _, _, err := GenerateAPIKey(KeyTypeSecret, EnvTest)
 		if err != nil {
 			t.Fatalf("GenerateAPIKey() failed: %v", err)
 		}

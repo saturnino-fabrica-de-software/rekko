@@ -14,10 +14,12 @@ import (
 
 type FaceRepositoryInterface interface {
 	Create(ctx context.Context, face *domain.Face) error
+	Update(ctx context.Context, face *domain.Face) error
 	GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Face, error)
 	Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error
 	SearchByEmbedding(ctx context.Context, tenantID uuid.UUID, embedding []float64, threshold float64, limit int) ([]domain.SearchMatch, error)
 	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Face, error)
 }
 
 type VerificationRepositoryInterface interface {
@@ -83,7 +85,22 @@ func (s *FaceService) Register(ctx context.Context, tenantID uuid.UUID, external
 		return nil, domain.ErrLivenessFailed
 	}
 
-	// Create face with data from analysis
+	// Check if external_id already has a face registered
+	// If yes: update (allows re-registration with better photo)
+	// If no: create new
+	existingFace, err := s.faceRepo.GetByExternalID(ctx, tenantID, externalID)
+	if err == nil && existingFace != nil {
+		// Update existing face with new embedding/quality
+		existingFace.Embedding = analysis.Embedding
+		existingFace.QualityScore = analysis.QualityScore
+		if err := s.faceRepo.Update(ctx, existingFace); err != nil {
+			return nil, fmt.Errorf("tenant %s: update face: %w", tenantID, err)
+		}
+		// Get the updated face to return complete data
+		return s.faceRepo.GetByExternalID(ctx, tenantID, externalID)
+	}
+
+	// Create new face
 	face := &domain.Face{
 		TenantID:     tenantID,
 		ExternalID:   externalID,
@@ -161,6 +178,19 @@ func (s *FaceService) Delete(ctx context.Context, tenantID uuid.UUID, externalID
 	}
 
 	return nil
+}
+
+// GetByExternalID retrieves a face by external ID for a tenant
+func (s *FaceService) GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Face, error) {
+	face, err := s.faceRepo.GetByExternalID(ctx, tenantID, externalID)
+	if err != nil {
+		return nil, err
+	}
+	return face, nil
+}
+
+func (s *FaceService) List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Face, error) {
+	return s.faceRepo.List(ctx, tenantID, limit, offset)
 }
 
 func (s *FaceService) CheckLiveness(ctx context.Context, imageBytes []byte, threshold float64) (*domain.LivenessResult, error) {

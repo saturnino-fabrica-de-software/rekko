@@ -46,3 +46,9 @@ type LivenessChecks struct {
 	QualityOK    bool `json:"quality_ok"`
 	SingleFace   bool `json:"single_face"`
 }
+
+// RegistrationCheck represents the result of checking if a face is registered
+type RegistrationCheck struct {
+	Registered   bool       `json:"registered"`
+	RegisteredAt *time.Time `json:"registered_at,omitempty"`
+}

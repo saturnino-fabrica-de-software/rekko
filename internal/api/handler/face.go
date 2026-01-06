@@ -34,6 +34,8 @@ type FaceService interface {
 	Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error
 	CheckLiveness(ctx context.Context, imageBytes []byte, threshold float64) (*domain.LivenessResult, error)
 	Search(ctx context.Context, tenant *domain.Tenant, imageBytes []byte, threshold float64, maxResults int, clientIP string) (*domain.SearchResult, error)
+	GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Face, error)
+	List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Face, error)
 }
 
 // UsageTracker interface for tracking usage metrics
@@ -141,6 +143,15 @@ type SearchMatchResponse struct {
 	ExternalID string  `json:"external_id"`
 	FaceID     string  `json:"face_id"`
 	Similarity float64 `json:"similarity"`
+}
+
+// FaceResponse response for get face endpoint
+type FaceResponse struct {
+	FaceID       string  `json:"face_id"`
+	ExternalID   string  `json:"external_id"`
+	QualityScore float64 `json:"quality_score"`
+	CreatedAt    string  `json:"created_at"`
+	UpdatedAt    string  `json:"updated_at"`
 }
 
 // Register POST /v1/faces - register a new face
@@ -266,6 +277,36 @@ func (h *FaceHandler) Delete(c *fiber.Ctx) error {
 
 	// 5. Return 204 No Content
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// GetByExternalID GET /v1/faces/:external_id - get face by external ID
+func (h *FaceHandler) GetByExternalID(c *fiber.Ctx) error {
+	// 1. Extract tenant_id from context
+	tenantID, err := middleware.GetTenantID(c)
+	if err != nil {
+		return err
+	}
+
+	// 2. Extract external_id from URL
+	externalID := strings.TrimSpace(c.Params("external_id"))
+	if externalID == "" {
+		return domain.ErrValidationFailed.WithError(errors.New("external_id is required"))
+	}
+
+	// 3. Call service to get face
+	face, err := h.service.GetByExternalID(c.Context(), tenantID, externalID)
+	if err != nil {
+		return err
+	}
+
+	// 4. Return response
+	return c.JSON(FaceResponse{
+		FaceID:       face.ID.String(),
+		ExternalID:   face.ExternalID,
+		QualityScore: face.QualityScore,
+		CreatedAt:    face.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:    face.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	})
 }
 
 // CheckLiveness POST /v1/faces/liveness - check if image contains a live person
@@ -441,4 +482,54 @@ func extractTenantSettings(tenant *domain.Tenant) domain.TenantSettings {
 	}
 
 	return settings
+}
+
+// ListFacesResponse response for listing faces
+type ListFacesResponse struct {
+	Faces []FaceResponse `json:"faces"`
+	Total int            `json:"total"`
+}
+
+// List GET /v1/faces - list all faces for the tenant
+// @Summary List faces
+// @Description Returns all faces registered for the authenticated tenant
+// @Tags faces
+// @Produce json
+// @Param limit query int false "Maximum number of results (default 50, max 100)"
+// @Param offset query int false "Offset for pagination"
+// @Success 200 {object} ListFacesResponse
+// @Failure 401 {object} domain.AppError
+// @Router /v1/faces [get]
+func (h *FaceHandler) List(c *fiber.Ctx) error {
+	// 1. Get tenant ID from context
+	tenantID, err := middleware.GetTenantID(c)
+	if err != nil {
+		return err
+	}
+
+	// 2. Parse query params
+	limit, _ := strconv.Atoi(c.Query("limit", "50"))
+	offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+	// 3. Call service
+	faces, err := h.service.List(c.Context(), tenantID, limit, offset)
+	if err != nil {
+		return err
+	}
+
+	// 4. Convert to response
+	response := make([]FaceResponse, 0, len(faces))
+	for _, face := range faces {
+		response = append(response, FaceResponse{
+			FaceID:       face.ID.String(),
+			ExternalID:   face.ExternalID,
+			QualityScore: face.QualityScore,
+			CreatedAt:    face.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		})
+	}
+
+	return c.JSON(ListFacesResponse{
+		Faces: response,
+		Total: len(response),
+	})
 }

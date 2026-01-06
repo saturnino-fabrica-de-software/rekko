@@ -86,6 +86,39 @@ func (r *FaceRepository) Create(ctx context.Context, face *domain.Face) error {
 	return nil
 }
 
+// Update updates an existing face's embedding and quality score
+func (r *FaceRepository) Update(ctx context.Context, face *domain.Face) error {
+	query := `
+		UPDATE faces
+		SET embedding = $1, quality_score = $2, updated_at = NOW()
+		WHERE id = $3 AND tenant_id = $4
+		RETURNING updated_at
+	`
+
+	var embedding *pgvector.Vector
+	if len(face.Embedding) > 0 {
+		floats := make([]float32, len(face.Embedding))
+		for i, v := range face.Embedding {
+			floats[i] = float32(v)
+		}
+		vec := pgvector.NewVector(floats)
+		embedding = &vec
+	}
+
+	err := r.pool.QueryRow(ctx, query,
+		embedding,
+		face.QualityScore,
+		face.ID,
+		face.TenantID,
+	).Scan(&face.UpdatedAt)
+
+	if err != nil {
+		return fmt.Errorf("update face: %w", err)
+	}
+
+	return nil
+}
+
 func (r *FaceRepository) GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Face, error) {
 	query := `
 		SELECT id, tenant_id, external_id, embedding, metadata, quality_score, created_at, updated_at
@@ -227,4 +260,62 @@ func (r *FaceRepository) CountByTenant(ctx context.Context, tenantID uuid.UUID) 
 	}
 
 	return count, nil
+}
+
+// List returns all faces for a tenant with pagination
+func (r *FaceRepository) List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Face, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	query := `
+		SELECT id, tenant_id, external_id, embedding, metadata, quality_score, created_at, updated_at
+		FROM faces
+		WHERE tenant_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	rows, err := r.pool.Query(ctx, query, tenantID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list faces: %w", err)
+	}
+	defer rows.Close()
+
+	var faces []*domain.Face
+	for rows.Next() {
+		face := &domain.Face{}
+		var embedding *pgvector.Vector
+
+		if err := rows.Scan(
+			&face.ID,
+			&face.TenantID,
+			&face.ExternalID,
+			&embedding,
+			&face.Metadata,
+			&face.QualityScore,
+			&face.CreatedAt,
+			&face.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan face row: %w", err)
+		}
+
+		if embedding != nil && embedding.Slice() != nil {
+			face.Embedding = make([]float64, len(embedding.Slice()))
+			for i, v := range embedding.Slice() {
+				face.Embedding[i] = float64(v)
+			}
+		}
+
+		faces = append(faces, face)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate face rows: %w", err)
+	}
+
+	return faces, nil
 }

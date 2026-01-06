@@ -34,6 +34,7 @@ type APIKeyRepositoryInterface interface {
 // FaceRepositoryInterface defines operations for face data access
 type FaceRepositoryInterface interface {
 	Create(ctx context.Context, face *domain.Face) error
+	Update(ctx context.Context, face *domain.Face) error
 	GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Face, error)
 	Delete(ctx context.Context, tenantID uuid.UUID, externalID string) error
 	SearchByEmbedding(ctx context.Context, tenantID uuid.UUID, embedding []float64, threshold float64, limit int) ([]domain.SearchMatch, error)

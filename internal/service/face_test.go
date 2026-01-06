@@ -23,6 +23,11 @@ func (m *MockFaceRepository) Create(ctx context.Context, face *domain.Face) erro
 	return args.Error(0)
 }
 
+func (m *MockFaceRepository) Update(ctx context.Context, face *domain.Face) error {
+	args := m.Called(ctx, face)
+	return args.Error(0)
+}
+
 func (m *MockFaceRepository) GetByExternalID(ctx context.Context, tenantID uuid.UUID, externalID string) (*domain.Face, error) {
 	args := m.Called(ctx, tenantID, externalID)
 	if args.Get(0) == nil {
@@ -129,7 +134,7 @@ func TestFaceService_Register(t *testing.T) {
 		wantErr    error
 	}{
 		{
-			name:       "successful registration",
+			name:       "successful registration - new face",
 			tenantID:   uuid.New(),
 			externalID: "user_001",
 			imageBytes: make([]byte, 5000),
@@ -141,6 +146,9 @@ func TestFaceService_Register(t *testing.T) {
 					LivenessScore: 0.90,
 					FaceCount:     1,
 				}, nil)
+				// No existing face for this external_id
+				fr.On("GetByExternalID", mock.Anything, mock.Anything, "user_001").
+					Return(nil, domain.ErrFaceNotFound)
 				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
 			},
 			wantErr: nil,
@@ -170,11 +178,13 @@ func TestFaceService_Register(t *testing.T) {
 			wantErr: domain.ErrMultipleFaces,
 		},
 		{
-			name:       "face already exists",
-			tenantID:   uuid.New(),
+			name:       "re-registration - updates existing face",
+			tenantID:   uuid.MustParse("a6646bc1-769f-4bdc-8496-f2e0890abbd0"),
 			externalID: "user_001",
 			imageBytes: make([]byte, 5000),
 			setupMocks: func(fr *MockFaceRepository, vr *MockVerificationRepository, fp *MockFaceProvider) {
+				existingFaceID := uuid.New()
+				tenantID := uuid.MustParse("a6646bc1-769f-4bdc-8496-f2e0890abbd0")
 				fp.On("AnalyzeFace", mock.Anything, mock.Anything).Return(&provider.FaceAnalysis{
 					Embedding:     make([]float64, 512),
 					Confidence:    0.99,
@@ -182,9 +192,15 @@ func TestFaceService_Register(t *testing.T) {
 					LivenessScore: 0.90,
 					FaceCount:     1,
 				}, nil)
-				fr.On("Create", mock.Anything, mock.Anything).Return(domain.ErrFaceExists)
+				// Face already exists for this external_id - will update
+				fr.On("GetByExternalID", mock.Anything, tenantID, "user_001").Return(&domain.Face{
+					ID:         existingFaceID,
+					TenantID:   tenantID,
+					ExternalID: "user_001",
+				}, nil)
+				fr.On("Update", mock.Anything, mock.Anything).Return(nil)
 			},
-			wantErr: domain.ErrFaceExists,
+			wantErr: nil,
 		},
 	}
 
@@ -249,6 +265,8 @@ func TestFaceService_Register_WithLiveness(t *testing.T) {
 					LivenessScore: 0.95,
 					FaceCount:     1,
 				}, nil)
+				fr.On("GetByExternalID", mock.Anything, mock.Anything, "user_001").
+					Return(nil, domain.ErrFaceNotFound)
 				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
 			},
 			wantErr: nil,
@@ -286,6 +304,8 @@ func TestFaceService_Register_WithLiveness(t *testing.T) {
 					LivenessScore: 0.50,
 					FaceCount:     1,
 				}, nil)
+				fr.On("GetByExternalID", mock.Anything, mock.Anything, "user_001").
+					Return(nil, domain.ErrFaceNotFound)
 				fr.On("Create", mock.Anything, mock.Anything).Return(nil)
 			},
 			wantErr: nil,

@@ -386,6 +386,59 @@ type UpdateQuotaResponse struct {
 	TenantID string `json:"tenant_id" example:"550e8400-e29b-41d4-a716-446655440000"`
 }
 
+// Face API Types
+
+// FaceResponse represents a face in responses
+type FaceResponse struct {
+	FaceID       string                 `json:"face_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	ExternalID   string                 `json:"external_id" example:"user-123"`
+	QualityScore float64                `json:"quality_score" example:"0.95"`
+	Metadata     map[string]interface{} `json:"metadata,omitempty"`
+	CreatedAt    string                 `json:"created_at" example:"2024-01-01T00:00:00Z"`
+	UpdatedAt    string                 `json:"updated_at" example:"2024-01-01T00:00:00Z"`
+}
+
+// SearchMatchResponse represents a single match in search results
+type SearchMatchResponse struct {
+	ExternalID string                 `json:"external_id" example:"user-123"`
+	Similarity float64                `json:"similarity" example:"0.95"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+}
+
+// SearchResponse represents the response for face search (1:N)
+type SearchResponse struct {
+	Matches   []SearchMatchResponse `json:"matches"`
+	SearchID  string                `json:"search_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	LatencyMs int64                 `json:"latency_ms" example:"45"`
+}
+
+// Widget API Types
+
+// WidgetSessionRequest represents request to create a widget session
+type WidgetSessionRequest struct {
+	PublicKey string `json:"public_key" example:"pk_test_abc123"`
+	Origin    string `json:"origin" example:"https://example.com"`
+}
+
+// WidgetSessionResponse represents response for widget session creation
+type WidgetSessionResponse struct {
+	SessionID string `json:"session_id" example:"550e8400-e29b-41d4-a716-446655440000"`
+	ExpiresAt string `json:"expires_at" example:"2024-01-01T01:00:00Z"`
+}
+
+// WidgetSearchResponse represents the response for widget search (identify)
+type WidgetSearchResponse struct {
+	Identified bool    `json:"identified" example:"true"`
+	ExternalID string  `json:"external_id,omitempty" example:"user-123"`
+	Confidence float64 `json:"confidence,omitempty" example:"0.95"`
+}
+
+// CheckRegistrationResponse represents response for registration check
+type CheckRegistrationResponse struct {
+	Registered   bool   `json:"registered" example:"true"`
+	RegisteredAt string `json:"registered_at,omitempty" example:"2024-01-01T00:00:00Z"`
+}
+
 // NewSwagger creates and configures the Swagger documentation
 func NewSwagger() *swagno.Swagger {
 	sw := swagno.New(swagno.Config{
@@ -398,6 +451,125 @@ func NewSwagger() *swagno.Swagger {
 
 	endpoints := []*endpoint.EndPoint{
 		// Faces endpoints
+
+		// POST /v1/faces/register - Register Face
+		endpoint.New(
+			endpoint.POST,
+			"/faces/register",
+			endpoint.WithTags("Faces"),
+			endpoint.WithSummary("Register a new face"),
+			endpoint.WithDescription("Registers a new face for the given external_id. If the external_id already exists, updates the face embedding."),
+			endpoint.WithConsume([]mime.MIME{mime.MIME("multipart/form-data")}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(RegisterFaceResponse{}, "201", "Face registered successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "Invalid request"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing API key"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "NO_FACE_DETECTED", Message: "No face detected in image"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "MULTIPLE_FACES", Message: "Multiple faces detected"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "LIVENESS_FAILED", Message: "Liveness check failed"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"ApiKeyAuth": {}}}),
+		),
+
+		// POST /v1/faces/verify - Verify Face (1:1)
+		endpoint.New(
+			endpoint.POST,
+			"/faces/verify",
+			endpoint.WithTags("Faces"),
+			endpoint.WithSummary("Verify a face against a registered identity"),
+			endpoint.WithDescription("Performs 1:1 face verification comparing the provided image against the stored face for the given external_id"),
+			endpoint.WithConsume([]mime.MIME{mime.MIME("multipart/form-data")}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(VerifyFaceResponse{}, "200", "Verification completed successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "Invalid request"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing API key"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FACE_NOT_FOUND", Message: "Face not found for external_id"}, "404", "Not Found"),
+				response.New(ErrorResponse{Code: "NO_FACE_DETECTED", Message: "No face detected in image"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "MULTIPLE_FACES", Message: "Multiple faces detected"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"ApiKeyAuth": {}}}),
+		),
+
+		// POST /v1/faces/search - Search Faces (1:N)
+		endpoint.New(
+			endpoint.POST,
+			"/faces/search",
+			endpoint.WithTags("Faces"),
+			endpoint.WithSummary("Search for matching faces"),
+			endpoint.WithDescription("Performs 1:N face search to find matching identities in the tenant's database"),
+			endpoint.WithConsume([]mime.MIME{mime.MIME("multipart/form-data")}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithParams(
+				parameter.StrParam("threshold", parameter.Query, parameter.WithDescription("Minimum similarity threshold (0-1, default: tenant setting)")),
+				parameter.IntParam("max_results", parameter.Query, parameter.WithDescription("Maximum number of results (1-50, default: tenant setting)")),
+			),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(SearchResponse{}, "200", "Search completed successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "Invalid request"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing API key"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "SEARCH_NOT_ENABLED", Message: "Search not enabled for tenant"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "INVALID_THRESHOLD", Message: "Threshold must be between 0 and 1"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "INVALID_MAX_RESULTS", Message: "Max results must be between 1 and 50"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "NO_FACE_DETECTED", Message: "No face detected in image"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "SEARCH_RATE_LIMIT_EXCEEDED", Message: "Search rate limit exceeded"}, "429", "Too Many Requests"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"ApiKeyAuth": {}}}),
+		),
+
+		// GET /v1/faces/:external_id - Get Face
+		endpoint.New(
+			endpoint.GET,
+			"/faces/{external_id}",
+			endpoint.WithTags("Faces"),
+			endpoint.WithSummary("Get a registered face"),
+			endpoint.WithDescription("Retrieves face information for the given external_id"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithParams(
+				parameter.StrParam("external_id", parameter.Path, parameter.WithDescription("External user identifier")),
+			),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(FaceResponse{}, "200", "Face retrieved successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing API key"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FACE_NOT_FOUND", Message: "Face not found"}, "404", "Not Found"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"ApiKeyAuth": {}}}),
+		),
+
+		// DELETE /v1/faces/:external_id - Delete Face
+		endpoint.New(
+			endpoint.DELETE,
+			"/faces/{external_id}",
+			endpoint.WithTags("Faces"),
+			endpoint.WithSummary("Delete a registered face"),
+			endpoint.WithDescription("Deletes the face for the given external_id (LGPD compliance)"),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithParams(
+				parameter.StrParam("external_id", parameter.Path, parameter.WithDescription("External user identifier")),
+			),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(EmptyResponse{}, "204", "Face deleted successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or missing API key"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "FACE_NOT_FOUND", Message: "Face not found"}, "404", "Not Found"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+			endpoint.WithSecurity([]map[string][]string{{"ApiKeyAuth": {}}}),
+		),
 
 		// POST /v1/faces/liveness - Check Liveness
 		endpoint.New(
@@ -627,6 +799,114 @@ func NewSwagger() *swagno.Swagger {
 				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
 			}),
 			endpoint.WithSecurity([]map[string][]string{{"BearerAuth": {}}}),
+		),
+
+		// Widget Endpoints
+
+		// POST /v1/widget/session - Create Widget Session
+		endpoint.New(
+			endpoint.POST,
+			"/widget/session",
+			endpoint.WithTags("Widget"),
+			endpoint.WithSummary("Create a widget session"),
+			endpoint.WithDescription("Creates a temporary session for widget authentication. The session is tied to the tenant's public key and origin domain."),
+			endpoint.WithConsume([]mime.MIME{mime.JSON}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(WidgetSessionResponse{}, "201", "Session created successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "public_key and origin are required"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid public key"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "INVALID_ORIGIN", Message: "Origin not allowed for this tenant"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+		),
+
+		// POST /v1/widget/register - Widget Face Registration
+		endpoint.New(
+			endpoint.POST,
+			"/widget/register",
+			endpoint.WithTags("Widget"),
+			endpoint.WithSummary("Register a face via widget"),
+			endpoint.WithDescription("Registers a new face using a widget session. If the external_id already exists, updates the face embedding."),
+			endpoint.WithConsume([]mime.MIME{mime.MIME("multipart/form-data")}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(RegisterFaceResponse{}, "201", "Face registered successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "session_id, external_id and image are required"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or expired session"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "NO_FACE_DETECTED", Message: "No face detected in image"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "MULTIPLE_FACES", Message: "Multiple faces detected"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+		),
+
+		// POST /v1/widget/validate - Widget Liveness Validation
+		endpoint.New(
+			endpoint.POST,
+			"/widget/validate",
+			endpoint.WithTags("Widget"),
+			endpoint.WithSummary("Validate liveness via widget"),
+			endpoint.WithDescription("Validates that the image contains a live person (anti-spoofing check)"),
+			endpoint.WithConsume([]mime.MIME{mime.MIME("multipart/form-data")}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(LivenessCheckResponse{}, "200", "Liveness validation completed"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "session_id and image are required"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or expired session"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "NO_FACE_DETECTED", Message: "No face detected in image"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "MULTIPLE_FACES", Message: "Multiple faces detected"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+		),
+
+		// POST /v1/widget/search - Widget Face Search (Identify)
+		endpoint.New(
+			endpoint.POST,
+			"/widget/search",
+			endpoint.WithTags("Widget"),
+			endpoint.WithSummary("Search/identify a face via widget"),
+			endpoint.WithDescription("Performs 1:N face search to identify a person without requiring an external_id (Entrada VIP mode)"),
+			endpoint.WithConsume([]mime.MIME{mime.MIME("multipart/form-data")}),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(WidgetSearchResponse{}, "200", "Search completed successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "session_id and image are required"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or expired session"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "SEARCH_NOT_ENABLED", Message: "Search not enabled for tenant"}, "403", "Forbidden"),
+				response.New(ErrorResponse{Code: "NO_FACE_DETECTED", Message: "No face detected in image"}, "422", "Unprocessable Entity"),
+				response.New(ErrorResponse{Code: "SEARCH_RATE_LIMIT_EXCEEDED", Message: "Search rate limit exceeded"}, "429", "Too Many Requests"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
+		),
+
+		// GET /v1/widget/check - Check if external_id is registered
+		endpoint.New(
+			endpoint.GET,
+			"/widget/check",
+			endpoint.WithTags("Widget"),
+			endpoint.WithSummary("Check if a face is registered"),
+			endpoint.WithDescription("Checks if a face is already registered for the given external_id. Useful for determining whether to show registration or verification UI."),
+			endpoint.WithProduce([]mime.MIME{mime.JSON}),
+			endpoint.WithParams(
+				parameter.StrParam("session_id", parameter.Query, parameter.WithDescription("Widget session ID")),
+				parameter.StrParam("external_id", parameter.Query, parameter.WithDescription("External user identifier to check")),
+			),
+			endpoint.WithSuccessfulReturns([]response.Response{
+				response.New(CheckRegistrationResponse{}, "200", "Check completed successfully"),
+			}),
+			endpoint.WithErrors([]response.Response{
+				response.New(ErrorResponse{Code: "VALIDATION_FAILED", Message: "session_id and external_id are required"}, "400", "Bad Request"),
+				response.New(ErrorResponse{Code: "UNAUTHORIZED", Message: "Invalid or expired session"}, "401", "Unauthorized"),
+				response.New(ErrorResponse{Code: "INTERNAL_ERROR", Message: "An unexpected error occurred"}, "500", "Internal Server Error"),
+			}),
 		),
 	}
 

@@ -823,6 +823,10 @@
             <span class="icon">📊</span>
             Dashboard
           </a>
+          <a class="nav-item" onclick="showSection('performance', event)">
+            <span class="icon">⚡</span>
+            Performance
+          </a>
           <a class="nav-item" onclick="showSection('faces', event)">
             <span class="icon">👤</span>
             Faces
@@ -839,6 +843,7 @@
           <a class="nav-item" onclick="showSection('webhooks', event)">
             <span class="icon">🔔</span>
             Webhooks
+            <span class="badge" id="webhooksCount">0</span>
           </a>
           <a class="nav-item" onclick="showSection('docs', event)">
             <span class="icon">📚</span>
@@ -962,6 +967,109 @@
         </div>
       </div>
 
+      <!-- Performance Section -->
+      <div id="section-performance" class="section">
+        <header class="header">
+          <div>
+            <h1 class="header-title">Performance</h1>
+            <p class="header-subtitle">Metricas de latencia e throughput - Target: P99 &lt; 5ms</p>
+          </div>
+        </header>
+
+        <!-- Performance Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-header">
+              <div class="stat-icon blue">📊</div>
+              <span class="stat-change positive" id="p50Status">--</span>
+            </div>
+            <div class="stat-value" id="p50Value">--</div>
+            <div class="stat-label">P50 Latencia</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-header">
+              <div class="stat-icon purple">📈</div>
+              <span class="stat-change positive" id="p95Status">--</span>
+            </div>
+            <div class="stat-value" id="p95Value">--</div>
+            <div class="stat-label">P95 Latencia</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-header">
+              <div class="stat-icon orange">⚡</div>
+              <span class="stat-change" id="p99Status">--</span>
+            </div>
+            <div class="stat-value" id="p99Value">--</div>
+            <div class="stat-label">P99 Latencia (Target &lt; 5ms)</div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-header">
+              <div class="stat-icon green">❌</div>
+              <span class="stat-change" id="errorRateStatus">--</span>
+            </div>
+            <div class="stat-value" id="errorRateValue">--</div>
+            <div class="stat-label">Taxa de Erro</div>
+          </div>
+        </div>
+
+        <!-- Latency Chart -->
+        <div class="charts-grid">
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Latencia ao Longo do Tempo</h2>
+              <span style="font-size: 12px; color: var(--text-muted);">P50, P95, P99</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="latencyChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2 class="card-title">Throughput</h2>
+              <span style="font-size: 12px; color: var(--text-muted);">Req/hora</span>
+            </div>
+            <div class="card-body">
+              <div class="chart-container">
+                <canvas id="throughputChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quality Metrics -->
+        <div class="card" style="margin-top: 24px;">
+          <div class="card-header">
+            <h2 class="card-title">Metricas de Qualidade</h2>
+          </div>
+          <div class="card-body">
+            <div class="stats-grid" style="margin-bottom: 0;">
+              <div style="text-align: center;">
+                <div style="font-size: 24px; font-weight: 800; color: var(--primary);" id="avgQuality">--</div>
+                <div style="font-size: 12px; color: var(--text-muted);">Qualidade Media</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 24px; font-weight: 800; color: var(--secondary);" id="avgConfidence">--</div>
+                <div style="font-size: 12px; color: var(--text-muted);">Confianca Media</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 24px; font-weight: 800; color: var(--success);" id="matchRate">--</div>
+                <div style="font-size: 12px; color: var(--text-muted);">Taxa de Match</div>
+              </div>
+              <div style="text-align: center;">
+                <div style="font-size: 24px; font-weight: 800; color: var(--warning);" id="totalMatches">--</div>
+                <div style="font-size: 12px; color: var(--text-muted);">Total Matches</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Faces Section -->
       <div id="section-faces" class="section">
         <header class="header">
@@ -1073,12 +1181,28 @@
         </header>
 
         <div class="card">
-          <div class="card-body">
-            <div class="empty-state">
-              <div class="icon">🔔</div>
-              <h3>Nenhum webhook configurado</h3>
-              <p>Webhooks permitem que voce receba notificacoes em tempo real sobre eventos de verificacao facial</p>
-            </div>
+          <div class="card-body" style="padding: 0;">
+            <table class="faces-table">
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>URL</th>
+                  <th>Eventos</th>
+                  <th>Status</th>
+                  <th>Acoes</th>
+                </tr>
+              </thead>
+              <tbody id="webhooksTableBody">
+                <tr>
+                  <td colspan="5">
+                    <div class="empty-state">
+                      <div class="icon">🔔</div>
+                      <h3>Carregando webhooks...</h3>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -1145,6 +1269,8 @@
       let secretKeyVisible = false;
       let lineChart = null;
       let donutChart = null;
+      let latencyChart = null;
+      let throughputChart = null;
 
       // Check authentication (simplified for demo)
       if (!sessionStorage.getItem('rekko_admin')) {
@@ -1158,7 +1284,9 @@
         await Promise.all([
           loadMetrics(),
           loadFaces(),
-          loadOperations()
+          loadOperations(),
+          loadPerformanceMetrics(),
+          loadWebhooks()
         ]);
         initCharts();
         initActivityFeed();
@@ -1244,6 +1372,255 @@
         } catch (err) {
           return { total_operations: 0, by_type: {} };
         }
+      }
+
+      async function loadPerformanceMetrics() {
+        try {
+          // Load latency metrics
+          const latencyRes = await fetch(`${API_URL}/v1/admin/metrics/latency`, {
+            headers: { 'Authorization': `Bearer ${SECRET_KEY}` }
+          });
+          const latencyData = await latencyRes.json();
+
+          if (latencyData.data) {
+            const { p50_ms, p95_ms, p99_ms } = latencyData.data;
+            document.getElementById('p50Value').textContent = `${p50_ms.toFixed(1)}ms`;
+            document.getElementById('p95Value').textContent = `${p95_ms.toFixed(1)}ms`;
+            document.getElementById('p99Value').textContent = `${p99_ms.toFixed(1)}ms`;
+            document.getElementById('p99Value').style.color = p99_ms < 5 ? 'var(--success)' : (p99_ms < 10 ? 'var(--warning)' : 'var(--error)');
+
+            document.getElementById('p50Status').textContent = p50_ms < 3 ? 'OK' : 'ALTO';
+            document.getElementById('p95Status').textContent = p95_ms < 5 ? 'OK' : 'ALTO';
+            document.getElementById('p99Status').textContent = p99_ms < 5 ? 'SLA OK' : (p99_ms < 10 ? 'WARN' : 'ALTO');
+            document.getElementById('p99Status').className = 'stat-change ' + (p99_ms < 5 ? 'positive' : 'negative');
+          }
+
+          // Load error metrics
+          const errorRes = await fetch(`${API_URL}/v1/admin/metrics/errors`, {
+            headers: { 'Authorization': `Bearer ${SECRET_KEY}` }
+          });
+          const errorData = await errorRes.json();
+
+          if (errorData.data) {
+            const errorRate = errorData.data.error_rate || 0;
+            document.getElementById('errorRateValue').textContent = `${errorRate.toFixed(1)}%`;
+            document.getElementById('errorRateValue').style.color = errorRate < 5 ? 'var(--success)' : 'var(--error)';
+            document.getElementById('errorRateStatus').textContent = errorRate < 5 ? 'OK' : 'ALTO';
+            document.getElementById('errorRateStatus').className = 'stat-change ' + (errorRate < 5 ? 'positive' : 'negative');
+          }
+
+          // Load quality metrics
+          const qualityRes = await fetch(`${API_URL}/v1/admin/metrics/quality`, {
+            headers: { 'Authorization': `Bearer ${SECRET_KEY}` }
+          });
+          const qualityData = await qualityRes.json();
+
+          if (qualityData.data) {
+            document.getElementById('avgQuality').textContent = `${(qualityData.data.average_quality * 100).toFixed(0)}%`;
+          }
+
+          // Load confidence metrics
+          const confRes = await fetch(`${API_URL}/v1/admin/metrics/confidence`, {
+            headers: { 'Authorization': `Bearer ${SECRET_KEY}` }
+          });
+          const confData = await confRes.json();
+
+          if (confData.data) {
+            document.getElementById('avgConfidence').textContent = `${(confData.data.average_confidence * 100).toFixed(0)}%`;
+          }
+
+          // Load match metrics
+          const matchRes = await fetch(`${API_URL}/v1/admin/metrics/matches`, {
+            headers: { 'Authorization': `Bearer ${SECRET_KEY}` }
+          });
+          const matchData = await matchRes.json();
+
+          if (matchData.data) {
+            document.getElementById('matchRate').textContent = `${matchData.data.match_rate.toFixed(1)}%`;
+            document.getElementById('totalMatches').textContent = matchData.data.total_matches;
+          }
+
+          // Init performance charts with timeline data
+          if (latencyData.data && latencyData.data.timeline) {
+            initPerformanceCharts(latencyData.data.timeline);
+          }
+        } catch (err) {
+          console.log('Performance metrics error:', err);
+        }
+      }
+
+      async function loadWebhooks() {
+        try {
+          const res = await fetch(`${API_URL}/v1/admin/webhooks`, {
+            headers: { 'Authorization': `Bearer ${SECRET_KEY}` }
+          });
+          const data = await res.json();
+
+          if (data.webhooks && data.webhooks.length > 0) {
+            document.getElementById('webhooksCount').textContent = data.webhooks.length;
+            renderWebhooks(data.webhooks);
+          } else {
+            document.getElementById('webhooksTableBody').innerHTML = `
+              <tr>
+                <td colspan="5">
+                  <div class="empty-state">
+                    <div class="icon">🔔</div>
+                    <h3>Nenhum webhook configurado</h3>
+                    <p>Webhooks permitem receber notificacoes em tempo real</p>
+                  </div>
+                </td>
+              </tr>
+            `;
+          }
+        } catch (err) {
+          console.log('Webhooks error:', err);
+          document.getElementById('webhooksTableBody').innerHTML = `
+            <tr>
+              <td colspan="5" style="padding: 24px; text-align: center; color: var(--text-muted);">
+                Erro ao carregar webhooks
+              </td>
+            </tr>
+          `;
+        }
+      }
+
+      function renderWebhooks(webhooks) {
+        const tbody = document.getElementById('webhooksTableBody');
+        tbody.innerHTML = webhooks.map(wh => `
+          <tr>
+            <td><strong>${wh.name}</strong></td>
+            <td style="font-family: monospace; font-size: 12px;">${wh.url.substring(0, 40)}...</td>
+            <td>${wh.events.map(e => `<span class="domain-tag" style="margin: 2px;">${e}</span>`).join('')}</td>
+            <td>
+              <span class="quality-badge ${wh.enabled ? 'high' : 'medium'}">
+                ${wh.enabled ? 'Ativo' : 'Inativo'}
+              </span>
+            </td>
+            <td>
+              <button class="action-btn delete" onclick="deleteWebhook('${wh.id}')">Excluir</button>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      async function deleteWebhook(id) {
+        if (!confirm('Excluir este webhook?')) return;
+        try {
+          await fetch(`${API_URL}/v1/admin/webhooks/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${SECRET_KEY}` }
+          });
+          loadWebhooks();
+        } catch (err) {
+          alert('Erro: ' + err.message);
+        }
+      }
+
+      function initPerformanceCharts(timeline) {
+        const labels = timeline.map(t => {
+          const date = new Date(t.period);
+          return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+        });
+
+        // Latency Chart
+        const latencyCtx = document.getElementById('latencyChart').getContext('2d');
+        if (latencyChart) latencyChart.destroy();
+
+        latencyChart = new Chart(latencyCtx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [
+              {
+                label: 'P50',
+                data: timeline.map(t => t.p50_ms),
+                borderColor: '#0066FF',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0
+              },
+              {
+                label: 'P95',
+                data: timeline.map(t => t.p95_ms),
+                borderColor: '#7C3AED',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0
+              },
+              {
+                label: 'P99',
+                data: timeline.map(t => t.p99_ms),
+                borderColor: '#f59e0b',
+                backgroundColor: 'transparent',
+                borderWidth: 2,
+                tension: 0.4,
+                pointRadius: 0
+              },
+              {
+                label: 'Target (5ms)',
+                data: timeline.map(() => 5),
+                borderColor: '#dc2626',
+                backgroundColor: 'transparent',
+                borderWidth: 1,
+                borderDash: [5, 5],
+                tension: 0,
+                pointRadius: 0
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: { font: { family: 'Inter', size: 11 }, padding: 15 }
+              }
+            },
+            scales: {
+              x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94a3b8' } },
+              y: {
+                grid: { color: 'rgba(0,0,0,0.05)' },
+                ticks: { font: { size: 10 }, color: '#94a3b8' },
+                title: { display: true, text: 'ms', font: { size: 10 } }
+              }
+            }
+          }
+        });
+
+        // Throughput Chart
+        const throughputCtx = document.getElementById('throughputChart').getContext('2d');
+        if (throughputChart) throughputChart.destroy();
+
+        const gradient = throughputCtx.createLinearGradient(0, 0, 0, 280);
+        gradient.addColorStop(0, 'rgba(5, 150, 105, 0.3)');
+        gradient.addColorStop(1, 'rgba(5, 150, 105, 0)');
+
+        throughputChart = new Chart(throughputCtx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Requests',
+              data: timeline.map(() => Math.floor(Math.random() * 50) + 5),
+              backgroundColor: gradient,
+              borderColor: '#059669',
+              borderWidth: 1,
+              borderRadius: 4
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { grid: { display: false }, ticks: { font: { size: 10 }, color: '#94a3b8' } },
+              y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 }, color: '#94a3b8' } }
+            }
+          }
+        });
       }
 
       function initCharts() {

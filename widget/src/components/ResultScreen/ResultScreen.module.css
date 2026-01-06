@@ -51,14 +51,14 @@
   padding: 14px 24px;
   font-size: 16px;
   font-weight: 500;
-  background-color: var(--rekko-primary-color);
-  color: white;
+  background-color: var(--rekko-primary-color) !important;
+  color: white !important;
   border-radius: calc(var(--rekko-border-radius) / 1.5);
   transition: background-color var(--rekko-transition-fast);
 }
 
 .primaryButton:hover {
-  background-color: var(--rekko-primary-hover-color);
+  background-color: var(--rekko-primary-hover-color) !important;
 }
 
 .secondaryButton {
@@ -66,13 +66,13 @@
   padding: 14px 24px;
   font-size: 16px;
   font-weight: 500;
-  background-color: transparent;
-  color: var(--rekko-text-secondary-color);
+  background-color: var(--rekko-border-color) !important;
+  color: var(--rekko-text-color) !important;
   border-radius: calc(var(--rekko-border-radius) / 1.5);
   transition: background-color var(--rekko-transition-fast), color var(--rekko-transition-fast);
 }
 
 .secondaryButton:hover {
-  background-color: var(--rekko-border-color);
-  color: var(--rekko-text-color);
+  background-color: var(--rekko-text-secondary-color) !important;
+  color: white !important;
 }
